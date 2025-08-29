@@ -16,6 +16,8 @@ const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
+const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 // ============================================================================
@@ -1030,4 +1032,5 @@ process.on('SIGTERM', () => {
 });
 
 module.exports = app;
+
 
