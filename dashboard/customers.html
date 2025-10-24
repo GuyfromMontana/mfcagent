@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customers - Montana Feed Co</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <h2>🌾 Montana Feed Co</h2>
+        </div>
+        <div class="nav-menu">
+            <a href="dashboard.html" class="nav-item">Dashboard</a>
+            <a href="leads.html" class="nav-item">Leads</a>
+            <a href="customers.html" class="nav-item active">Customers</a>
+            <a href="conversations.html" class="nav-item">Conversations</a>
+        </div>
+        <div class="nav-user">
+            <span id="userEmail">user@email.com</span>
+            <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Customer Database</h1>
+            <p>Complete agricultural customer profiles and operations</p>
+        </div>
+
+        <div class="filters-card">
+            <h3>Search & Filter</h3>
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label for="searchInput">Search</label>
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search by name, phone, or email...">
+                </div>
+
+                <div class="filter-group">
+                    <label for="operationFilter">Operation Type</label>
+                    <select id="operationFilter" class="form-control">
+                        <option value="">All Operations</option>
+                        <option value="dairy">Dairy</option>
+                        <option value="beef">Beef</option>
+                        <option value="sheep">Sheep</option>
+                        <option value="goat">Goat</option>
+                        <option value="mixed">Mixed</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="herdSizeFilter">Herd Size</label>
+                    <select id="herdSizeFilter" class="form-control">
+                        <option value="">All Sizes</option>
+                        <option value="small">Small (1-50)</option>
+                        <option value="medium">Medium (51-200)</option>
+                        <option value="large">Large (201-500)</option>
+                        <option value="xlarge">Very Large (500+)</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <button id="searchBtn" class="btn btn-primary">Search</button>
+                    <button id="clearSearchBtn" class="btn btn-secondary">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <div class="table-header">
+                <h2>All Customers (<span id="customerCount">0</span>)</h2>
+                <button id="refreshBtn" class="btn btn-secondary">🔄 Refresh</button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Company</th>
+                            <th>Operation</th>
+                            <th>Herd Size</th>
+                            <th>Contact</th>
+                            <th>Location</th>
+                            <th>Territory</th>
+                            <th>LPS</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customersTableBody">
+                        <tr>
+                            <td colspan="9" class="loading">Loading customers...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Detail Modal -->
+    <div id="customerModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Customer Details</h2>
+                <button class="modal-close" onclick="closeCustomerModal()">×</button>
+            </div>
+            <div id="customerDetailContent" class="modal-body">
+                <!-- Customer details will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeCustomerModal()" class="btn btn-secondary">Close</button>
+                <button id="editCustomerBtn" class="btn btn-primary">Edit Customer</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+        import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Check authentication
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            window.location.href = 'index.html';
+        }
+
+        document.getElementById('userEmail').textContent = user.email;
+
+        // Logout functionality
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+        });
+
+        // Load customers
+        async function loadCustomers(filters = {}) {
+            try {
+                let query = supabase.from('customers').select('*');
+
+                if (filters.search) {
+                    query = query.or(`first_name.ilike.%${filters.search}%,last_name.ilike.%${filters.search}%,company_name.ilike.%${filters.search}%,phone_primary.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+                }
+                if (filters.operation_type) {
+                    query = query.eq('operation_type', filters.operation_type);
+                }
+                if (filters.herd_size) {
+                    const ranges = {
+                        small: [1, 50],
+                        medium: [51, 200],
+                        large: [201, 500],
+                        xlarge: [501, 99999]
+                    };
+                    const [min, max] = ranges[filters.herd_size];
+                    query = query.gte('herd_size', min).lte('herd_size', max);
+                }
+
+                query = query.order('last_name', { ascending: true });
+
+                const { data, error } = await query;
+
+                if (error) throw error;
+
+                displayCustomers(data);
+            } catch (error) {
+                console.error('Error loading customers:', error);
+                document.getElementById('customersTableBody').innerHTML = 
+                    '<tr><td colspan="9" class="error">Error loading customers</td></tr>';
+            }
+        }
+
+        function displayCustomers(customers) {
+            const tbody = document.getElementById('customersTableBody');
+            document.getElementById('customerCount').textContent = customers.length;
+
+            if (customers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty">No customers found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = customers.map(customer => `
+                <tr>
+                    <td><strong>${customer.first_name} ${customer.last_name}</strong></td>
+                    <td>${customer.company_name || '-'}</td>
+                    <td><span class="badge badge-${customer.operation_type || 'default'}">${customer.operation_type || 'N/A'}</span></td>
+                    <td>${customer.herd_size || 'N/A'}</td>
+                    <td>
+                        ${customer.phone_primary || '-'}<br>
+                        <small>${customer.email || '-'}</small>
+                    </td>
+                    <td>${customer.city ? `${customer.city}, ${customer.state}` : '-'}</td>
+                    <td>${customer.territory || '-'}</td>
+                    <td>${customer.lps_assigned || '-'}</td>
+                    <td>
+                        <button onclick="viewCustomer('${customer.id}')" class="btn btn-sm btn-primary">View</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Search and filter handlers
+        document.getElementById('searchBtn').addEventListener('click', () => {
+            const filters = {
+                search: document.getElementById('searchInput').value,
+                operation_type: document.getElementById('operationFilter').value,
+                herd_size: document.getElementById('herdSizeFilter').value
+            };
+            loadCustomers(filters);
+        });
+
+        document.getElementById('clearSearchBtn').addEventListener('click', () => {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('operationFilter').value = '';
+            document.getElementById('herdSizeFilter').value = '';
+            loadCustomers();
+        });
+
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            loadCustomers();
+        });
+
+        // View customer details
+        window.viewCustomer = async function(customerId) {
+            try {
+                const { data: customer, error } = await supabase
+                    .from('customers')
+                    .select('*')
+                    .eq('id', customerId)
+                    .single();
+
+                if (error) throw error;
+
+                document.getElementById('customerDetailContent').innerHTML = `
+                    <div class="detail-grid">
+                        <div class="detail-section">
+                            <h3>Contact Information</h3>
+                            <p><strong>Name:</strong> ${customer.first_name} ${customer.last_name}</p>
+                            <p><strong>Company:</strong> ${customer.company_name || 'N/A'}</p>
+                            <p><strong>Email:</strong> ${customer.email || 'N/A'}</p>
+                            <p><strong>Phone:</strong> ${customer.phone_primary || 'N/A'}</p>
+                            ${customer.phone_secondary ? `<p><strong>Alt Phone:</strong> ${customer.phone_secondary}</p>` : ''}
+                        </div>
+
+                        <div class="detail-section">
+                            <h3>Location</h3>
+                            <p><strong>Address:</strong> ${customer.address_line1 || 'N/A'}</p>
+                            ${customer.address_line2 ? `<p>${customer.address_line2}</p>` : ''}
+                            <p><strong>City:</strong> ${customer.city || 'N/A'}</p>
+                            <p><strong>State:</strong> ${customer.state || 'N/A'}</p>
+                            <p><strong>ZIP:</strong> ${customer.zip_code || 'N/A'}</p>
+                            <p><strong>Territory:</strong> ${customer.territory || 'N/A'}</p>
+                        </div>
+
+                        <div class="detail-section">
+                            <h3>Operation Details</h3>
+                            <p><strong>Type:</strong> ${customer.operation_type || 'N/A'}</p>
+                            <p><strong>Herd Size:</strong> ${customer.herd_size || 'N/A'}</p>
+                            <p><strong>LPS:</strong> ${customer.lps_assigned || 'N/A'}</p>
+                        </div>
+
+                        <div class="detail-section">
+                            <h3>Notes</h3>
+                            <p>${customer.notes || 'No notes available'}</p>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('customerModal').style.display = 'block';
+            } catch (error) {
+                console.error('Error loading customer details:', error);
+                alert('Error loading customer details');
+            }
+        };
+
+        window.closeCustomerModal = function() {
+            document.getElementById('customerModal').style.display = 'none';
+        };
+
+        // Initial load
+        loadCustomers();
+    </script>
+</body>
+</html>

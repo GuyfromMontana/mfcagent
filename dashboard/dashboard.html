@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Montana Feed Co</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <h2>🌾 Montana Feed Co</h2>
+        </div>
+        <div class="nav-menu">
+            <a href="dashboard.html" class="nav-item active">Dashboard</a>
+            <a href="leads.html" class="nav-item">Leads</a>
+            <a href="customers.html" class="nav-item">Customers</a>
+            <a href="conversations.html" class="nav-item">Conversations</a>
+        </div>
+        <div class="nav-user">
+            <span id="userEmail">user@email.com</span>
+            <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Dashboard Overview</h1>
+            <p>Real-time insights from your voice agent system</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📞</div>
+                <div class="stat-content">
+                    <h3 id="totalLeads">0</h3>
+                    <p>Total Leads</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">🔥</div>
+                <div class="stat-content">
+                    <h3 id="hotLeads">0</h3>
+                    <p>Hot Leads</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-content">
+                    <h3 id="qualifiedLeads">0</h3>
+                    <p>Qualified</p>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon">⏰</div>
+                <div class="stat-content">
+                    <h3 id="followUpLeads">0</h3>
+                    <p>Follow-ups Due</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <h2>Recent Leads</h2>
+                <div id="recentLeadsList" class="list-container">
+                    <p class="loading">Loading leads...</p>
+                </div>
+                <a href="leads.html" class="btn btn-secondary">View All Leads →</a>
+            </div>
+
+            <div class="dashboard-card">
+                <h2>Lead Status Distribution</h2>
+                <div id="statusChart" class="chart-container">
+                    <div class="status-bar">
+                        <div class="status-item">
+                            <span class="status-label">New</span>
+                            <div class="progress-bar">
+                                <div id="newBar" class="progress-fill bg-blue" style="width: 0%"></div>
+                            </div>
+                            <span id="newCount" class="status-count">0</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Contacted</span>
+                            <div class="progress-bar">
+                                <div id="contactedBar" class="progress-fill bg-yellow" style="width: 0%"></div>
+                            </div>
+                            <span id="contactedCount" class="status-count">0</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Qualified</span>
+                            <div class="progress-bar">
+                                <div id="qualifiedBar" class="progress-fill bg-green" style="width: 0%"></div>
+                            </div>
+                            <span id="qualifiedCount" class="status-count">0</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Converted</span>
+                            <div class="progress-bar">
+                                <div id="convertedBar" class="progress-fill bg-purple" style="width: 0%"></div>
+                            </div>
+                            <span id="convertedCount" class="status-count">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <h2>Priority Follow-Ups</h2>
+            <div id="followUpList" class="table-responsive">
+                <p class="loading">Loading follow-ups...</p>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="dashboard.js"></script>
+</body>
+</html>

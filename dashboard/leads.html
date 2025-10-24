@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leads - Montana Feed Co</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <h2>🌾 Montana Feed Co</h2>
+        </div>
+        <div class="nav-menu">
+            <a href="dashboard.html" class="nav-item">Dashboard</a>
+            <a href="leads.html" class="nav-item active">Leads</a>
+            <a href="customers.html" class="nav-item">Customers</a>
+            <a href="conversations.html" class="nav-item">Conversations</a>
+        </div>
+        <div class="nav-user">
+            <span id="userEmail">user@email.com</span>
+            <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Lead Management</h1>
+            <p>Manage and track all your agricultural leads</p>
+        </div>
+
+        <div class="filters-card">
+            <h3>Filters</h3>
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label for="statusFilter">Status</label>
+                    <select id="statusFilter" class="form-control">
+                        <option value="">All Statuses</option>
+                        <option value="new">New</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="qualified">Qualified</option>
+                        <option value="nurturing">Nurturing</option>
+                        <option value="converted">Converted</option>
+                        <option value="lost">Lost</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="priorityFilter">Priority</label>
+                    <select id="priorityFilter" class="form-control">
+                        <option value="">All Priorities</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="scoreFilter">Min Score</label>
+                    <input type="number" id="scoreFilter" class="form-control" min="0" max="100" placeholder="0-100">
+                </div>
+
+                <div class="filter-group">
+                    <button id="applyFilters" class="btn btn-primary">Apply Filters</button>
+                    <button id="clearFilters" class="btn btn-secondary">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <div class="table-header">
+                <h2>All Leads (<span id="leadCount">0</span>)</h2>
+                <button id="refreshBtn" class="btn btn-secondary">🔄 Refresh</button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Lead #</th>
+                            <th>Customer</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Score</th>
+                            <th>Products</th>
+                            <th>Herd Size</th>
+                            <th>Follow-Up</th>
+                            <th>LPS</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsTableBody">
+                        <tr>
+                            <td colspan="10" class="loading">Loading leads...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lead Detail Modal -->
+    <div id="leadModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Lead Details</h2>
+                <button class="modal-close" onclick="closeLeadModal()">×</button>
+            </div>
+            <div id="leadDetailContent" class="modal-body">
+                <!-- Lead details will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeLeadModal()" class="btn btn-secondary">Close</button>
+                <button id="editLeadBtn" class="btn btn-primary">Edit Lead</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="leads.js"></script>
+</body>
+</html>

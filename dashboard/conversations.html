@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversations - Montana Feed Co</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <h2>🌾 Montana Feed Co</h2>
+        </div>
+        <div class="nav-menu">
+            <a href="dashboard.html" class="nav-item">Dashboard</a>
+            <a href="leads.html" class="nav-item">Leads</a>
+            <a href="customers.html" class="nav-item">Customers</a>
+            <a href="conversations.html" class="nav-item active">Conversations</a>
+        </div>
+        <div class="nav-user">
+            <span id="userEmail">user@email.com</span>
+            <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Voice Conversations</h1>
+            <p>Track all voice agent interactions and call history</p>
+        </div>
+
+        <div class="filters-card">
+            <h3>Filters</h3>
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label for="statusFilter">Status</label>
+                    <select id="statusFilter" class="form-control">
+                        <option value="">All Statuses</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="qualityFilter">Lead Quality</label>
+                    <select id="qualityFilter" class="form-control">
+                        <option value="">All Qualities</option>
+                        <option value="hot">Hot</option>
+                        <option value="warm">Warm</option>
+                        <option value="cold">Cold</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label for="dateFilter">Date Range</label>
+                    <input type="date" id="dateFilter" class="form-control">
+                </div>
+
+                <div class="filter-group">
+                    <button id="applyFilters" class="btn btn-primary">Apply</button>
+                    <button id="clearFilters" class="btn btn-secondary">Clear</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-card">
+            <div class="table-header">
+                <h2>All Conversations (<span id="conversationCount">0</span>)</h2>
+                <button id="refreshBtn" class="btn btn-secondary">🔄 Refresh</button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Customer</th>
+                            <th>Phone</th>
+                            <th>Status</th>
+                            <th>Duration</th>
+                            <th>Lead Quality</th>
+                            <th>Topics</th>
+                            <th>Started</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="conversationsTableBody">
+                        <tr>
+                            <td colspan="9" class="loading">Loading conversations...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conversation Detail Modal -->
+    <div id="conversationModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Conversation Details</h2>
+                <button class="modal-close" onclick="closeConversationModal()">×</button>
+            </div>
+            <div id="conversationDetailContent" class="modal-body">
+                <!-- Conversation details will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeConversationModal()" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+        import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Check authentication
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            window.location.href = 'index.html';
+        }
+
+        document.getElementById('userEmail').textContent = user.email;
+
+        // Logout functionality
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+        });
+
+        // Load conversations
+        async function loadConversations(filters = {}) {
+            try {
+                let query = supabase
+                    .from('conversations')
+                    .select('*, customers(first_name, last_name)')
+                    .order('started_at', { ascending: false });
+
+                if (filters.status) {
+                    query = query.eq('status', filters.status);
+                }
+                if (filters.lead_quality) {
+                    query = query.eq('lead_quality', filters.lead_quality);
+                }
+                if (filters.date) {
+                    query = query.gte('started_at', filters.date);
+                }
+
+                const { data, error } = await query;
+
+                if (error) throw error;
+
+                displayConversations(data);
+            } catch (error) {
+                console.error('Error loading conversations:', error);
+                document.getElementById('conversationsTableBody').innerHTML = 
+                    '<tr><td colspan="9" class="error">Error loading conversations</td></tr>';
+            }
+        }
+
+        function displayConversations(conversations) {
+            const tbody = document.getElementById('conversationsTableBody');
+            document.getElementById('conversationCount').textContent = conversations.length;
+
+            if (conversations.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty">No conversations found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = conversations.map(conv => {
+                const duration = Math.floor(conv.duration_seconds / 60);
+                const customerName = conv.customers 
+                    ? `${conv.customers.first_name} ${conv.customers.last_name}`
+                    : 'Unknown';
+                
+                return `
+                    <tr>
+                        <td><code>${conv.session_id?.substring(0, 8)}...</code></td>
+                        <td>${customerName}</td>
+                        <td>${conv.phone_number || '-'}</td>
+                        <td><span class="badge badge-${conv.status}">${conv.status}</span></td>
+                        <td>${duration}m ${conv.duration_seconds % 60}s</td>
+                        <td><span class="badge badge-${conv.lead_quality || 'unknown'}">${conv.lead_quality || 'N/A'}</span></td>
+                        <td>${conv.topics_discussed?.length || 0} topics</td>
+                        <td>${new Date(conv.started_at).toLocaleString()}</td>
+                        <td>
+                            <button onclick="viewConversation('${conv.id}')" class="btn btn-sm btn-primary">View</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Filter handlers
+        document.getElementById('applyFilters').addEventListener('click', () => {
+            const filters = {
+                status: document.getElementById('statusFilter').value,
+                lead_quality: document.getElementById('qualityFilter').value,
+                date: document.getElementById('dateFilter').value
+            };
+            loadConversations(filters);
+        });
+
+        document.getElementById('clearFilters').addEventListener('click', () => {
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('qualityFilter').value = '';
+            document.getElementById('dateFilter').value = '';
+            loadConversations();
+        });
+
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            loadConversations();
+        });
+
+        // View conversation details
+        window.viewConversation = async function(conversationId) {
+            try {
+                const { data: conv, error } = await supabase
+                    .from('conversations')
+                    .select('*, customers(first_name, last_name, company_name)')
+                    .eq('id', conversationId)
+                    .single();
+
+                if (error) throw error;
+
+                const duration = Math.floor(conv.duration_seconds / 60);
+                const customerName = conv.customers 
+                    ? `${conv.customers.first_name} ${conv.customers.last_name}`
+                    : 'Unknown';
+
+                let transcriptHtml = '<p class="empty">No transcript available</p>';
+                if (conv.transcript && conv.transcript.length > 0) {
+                    transcriptHtml = conv.transcript.map(msg => `
+                        <div class="transcript-message ${msg.role}">
+                            <strong>${msg.role === 'assistant' ? '🤖 Agent' : '👤 Customer'}:</strong>
+                            <p>${msg.content}</p>
+                            <small>${new Date(msg.timestamp).toLocaleTimeString()}</small>
+                        </div>
+                    `).join('');
+                }
+
+                document.getElementById('conversationDetailContent').innerHTML = `
+                    <div class="detail-grid">
+                        <div class="detail-section">
+                            <h3>Call Information</h3>
+                            <p><strong>Session ID:</strong> <code>${conv.session_id}</code></p>
+                            <p><strong>Customer:</strong> ${customerName}</p>
+                            ${conv.customers?.company_name ? `<p><strong>Company:</strong> ${conv.customers.company_name}</p>` : ''}
+                            <p><strong>Phone:</strong> ${conv.phone_number || 'N/A'}</p>
+                            <p><strong>Duration:</strong> ${duration}m ${conv.duration_seconds % 60}s</p>
+                            <p><strong>Status:</strong> <span class="badge badge-${conv.status}">${conv.status}</span></p>
+                            <p><strong>Lead Quality:</strong> <span class="badge badge-${conv.lead_quality || 'unknown'}">${conv.lead_quality || 'N/A'}</span></p>
+                        </div>
+
+                        <div class="detail-section">
+                            <h3>Analysis</h3>
+                            <p><strong>Topics Discussed:</strong></p>
+                            <ul>
+                                ${conv.topics_discussed?.map(topic => `<li>${topic}</li>`).join('') || '<li>None</li>'}
+                            </ul>
+                            <p><strong>Products Mentioned:</strong></p>
+                            <ul>
+                                ${conv.products_mentioned?.map(product => `<li>${product}</li>`).join('') || '<li>None</li>'}
+                            </ul>
+                            <p><strong>Follow-up Required:</strong> ${conv.requires_follow_up ? '✅ Yes' : '❌ No'}</p>
+                        </div>
+
+                        <div class="detail-section full-width">
+                            <h3>Conversation Transcript</h3>
+                            <div class="transcript-container">
+                                ${transcriptHtml}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('conversationModal').style.display = 'block';
+            } catch (error) {
+                console.error('Error loading conversation details:', error);
+                alert('Error loading conversation details');
+            }
+        };
+
+        window.closeConversationModal = function() {
+            document.getElementById('conversationModal').style.display = 'none';
+        };
+
+        // Initial load
+        loadConversations();
+    </script>
+</body>
+</html>
