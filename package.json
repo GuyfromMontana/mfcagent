@@ -5,32 +5,6 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.39.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.6.1",
-    "express": "^4.18.2",
-    "express-rate-limit": "^8.0.1"
-  }
-}Reconciled serverless architecture with existing Express setup.Perfect! The user's existing package.json already has @supabase/supabase-js which is what we need. It also has Express and other dependencies that they're using for their existing dashboard.
-Since we're deploying to Vercel as serverless functions (not an Express server), we need to merge these carefully. The API functions I created are Vercel serverless functions, not Express routes.
-Actually, looking at this, the user has an Express server setup. We have two options:
-
-Keep using Express and convert my serverless functions to Express routes
-Keep both - use Express for the dashboard, and Vercel serverless for the API functions
-
-I think the cleanest approach is to keep the existing package.json since it already has @supabase/supabase-js. The user can just copy the other files (api folder, vercel.json, etc.) and skip the package.json since theirs already has what's needed.
-Let me create a merged package.json that keeps their existing setup but adds anything needed for the serverless functions.Good news! Your package.json already has @supabase/supabase-js which is what we need!
-Here's your merged package.json:
-json{
-  "name": "montana-feed-company-voice-agent",
-  "version": "1.0.0",
-  "description": "Montana Feed Company AI Voice Agent with complete business logic",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
     "dev": "node server.js",
     "vercel-dev": "vercel dev",
     "deploy": "vercel --prod"
@@ -46,6 +20,7 @@ json{
     "vercel": "^33.0.0"
   },
   "engines": {
-    "node": ">=18.x"
+    "node": "18.x"
   }
 }
+
