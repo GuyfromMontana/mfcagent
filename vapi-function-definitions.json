@@ -1,0 +1,212 @@
+{
+  "functions": [
+    {
+      "name": "search_products",
+      "description": "Search Montana Feed Company products by name, category, or livestock type. Use this when a caller asks about specific products like AV4, XPC, Top Gun, or asks what products are available for a certain purpose.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Product name or keyword to search for (e.g., 'AV4', 'mineral', 'protein supplement')"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["Minerals", "Protein Supplements", "Complete Feeds", "Custom Blends", "Grains", "Supplements"],
+            "description": "Product category to filter by"
+          },
+          "livestock_type": {
+            "type": "string",
+            "enum": ["Beef Cattle", "Dairy Cattle", "Sheep", "Goats", "Horses"],
+            "description": "Type of livestock the product is for"
+          }
+        },
+        "required": []
+      },
+      "url": "https://your-deployment-url.com/api/search-products",
+      "method": "POST"
+    },
+    {
+      "name": "query_knowledge",
+      "description": "Search the ranch consultation knowledge base to answer questions about cattle nutrition, feeding programs, breeding, seasonal management, and general ranching questions. Use this for 'how to' questions and advice.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The caller's question or topic (e.g., 'what should I feed in winter', 'how to improve pregnancy rates')"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "Cattle Nutrition",
+              "Breeding & Reproduction",
+              "Seasonal Management",
+              "Product Recommendations",
+              "Custom Blends",
+              "Troubleshooting",
+              "MFC Services",
+              "Pricing & Ordering"
+            ],
+            "description": "Category of question if known"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific keywords from the question (e.g., ['winter', 'protein', 'pregnant'])"
+          }
+        },
+        "required": ["question"]
+      },
+      "url": "https://your-deployment-url.com/api/query-knowledge",
+      "method": "POST"
+    },
+    {
+      "name": "find_specialist",
+      "description": "Find the appropriate Montana Feed Company Livestock Production Specialist for a caller based on their location. Use this when a caller wants to talk to a specialist or needs a specialist to visit their ranch.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "county": {
+            "type": "string",
+            "description": "Montana or Wyoming county name (e.g., 'Beaverhead', 'Custer', 'Fremont')"
+          },
+          "city": {
+            "type": "string",
+            "description": "City name if county is not known"
+          },
+          "zip_code": {
+            "type": "string",
+            "description": "ZIP code of the caller's location"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["Montana", "Wyoming"],
+            "description": "State where the ranch is located"
+          }
+        },
+        "required": []
+      },
+      "url": "https://your-deployment-url.com/api/find-specialist",
+      "method": "POST"
+    },
+    {
+      "name": "get_warehouse",
+      "description": "Get information about Montana Feed Company warehouse locations including hours, contact info, and service areas. Use this when callers ask about warehouse locations or which warehouse to contact.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "warehouse_code": {
+            "type": "string",
+            "enum": ["DL", "MC", "LT", "CB", "RV"],
+            "description": "Warehouse code: DL=Dillon, MC=Miles City, LT=Lewistown, CB=Columbus, RV=Riverton"
+          },
+          "city": {
+            "type": "string",
+            "description": "City name to find nearest warehouse (e.g., 'Dillon', 'Miles City')"
+          },
+          "region": {
+            "type": "string",
+            "description": "Region of Montana/Wyoming (e.g., 'Southwest Montana', 'Central Wyoming')"
+          }
+        },
+        "required": []
+      },
+      "url": "https://your-deployment-url.com/api/get-warehouse",
+      "method": "POST"
+    },
+    {
+      "name": "create_lead",
+      "description": "Create a new lead in the system when a caller is interested in products or services. Use this to capture contact information and interests for follow-up by a specialist.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "first_name": {
+            "type": "string",
+            "description": "Caller's first name"
+          },
+          "last_name": {
+            "type": "string",
+            "description": "Caller's last name"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Caller's phone number"
+          },
+          "email": {
+            "type": "string",
+            "description": "Caller's email address if provided"
+          },
+          "ranch_name": {
+            "type": "string",
+            "description": "Name of the ranch or operation"
+          },
+          "county": {
+            "type": "string",
+            "description": "County where ranch is located"
+          },
+          "zip_code": {
+            "type": "string",
+            "description": "ZIP code of ranch"
+          },
+          "livestock_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Types of livestock (e.g., ['beef cattle', 'horses'])"
+          },
+          "herd_size": {
+            "type": "integer",
+            "description": "Number of head in the operation"
+          },
+          "primary_interest": {
+            "type": "string",
+            "description": "What they're interested in (product inquiry, nutrition consultation, custom blend, etc.)"
+          },
+          "conversation_id": {
+            "type": "string",
+            "description": "Vapi conversation ID for tracking"
+          }
+        },
+        "required": ["first_name", "phone"]
+      },
+      "url": "https://your-deployment-url.com/api/create-lead",
+      "method": "POST"
+    },
+    {
+      "name": "get_recommendations",
+      "description": "Get product recommendations based on livestock type, production stage, season, and specific needs. Use this when callers ask 'what should I feed' or 'what product do you recommend for'.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "livestock_type": {
+            "type": "string",
+            "enum": ["Beef Cattle", "Dairy Cattle", "Sheep", "Goats", "Horses"],
+            "description": "Type of livestock"
+          },
+          "production_stage": {
+            "type": "string",
+            "enum": ["pregnant", "lactating", "growing", "breeding", "maintenance", "finishing"],
+            "description": "Production stage of the animals"
+          },
+          "season": {
+            "type": "string",
+            "enum": ["winter", "spring", "summer", "fall"],
+            "description": "Current season or time of year"
+          },
+          "need": {
+            "type": "string",
+            "enum": ["mineral", "protein", "energy", "show", "general"],
+            "description": "Specific nutritional need or purpose"
+          }
+        },
+        "required": ["livestock_type"]
+      },
+      "url": "https://your-deployment-url.com/api/get-recommendations",
+      "method": "POST"
+    }
+  ]
+}
