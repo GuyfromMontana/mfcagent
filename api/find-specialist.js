@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    const { county, city, state } = req.body || {}; 
+    const { county, city, state, zip_code } = req.body || {}; 
     let territory = null;
 
     if (county) {
