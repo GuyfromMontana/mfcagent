@@ -127,7 +127,7 @@ SUPABASE_SERVICE_KEY=your-service-role-key
 ## 🆘 Need Help?
 
 Check the DEPLOYMENT_GUIDE.md for detailed troubleshooting steps!
-
+aa
 ---
 
 **Ready to deploy? Start with DEPLOYMENT_GUIDE.md!** 🚀
