@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    const { warehouse_code, city, region } = req.body;
+    const { warehouse_code, city, region } = req.body || {};
 
     let dbQuery = supabase
       .from('warehouses')
