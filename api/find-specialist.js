@@ -1,15 +1,13 @@
 // API Endpoint: /api/find-specialist
-// Finds appropriate specialist based on location
-
+// Finds the appropriate livestock specialist based on county - VAPI COMPATIBLE VERSION
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+  
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const supabase = createClient(
@@ -17,71 +15,103 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    const { county, city, state, zip_code } = req.body || {}; 
-    let territory = null;
+    // Get county from query params or body
+    const county = req.method === 'GET' 
+      ? req.query.county 
+      : req.body?.county;
 
-    if (county) {
-      const { data } = await supabase
-        .from('territories')
-        .select('id, territory_name, territory_code')
-        .contains('counties', [county])
-        .eq('is_active', true)
-        .limit(1);
-      
-      if (data && data.length > 0) territory = data[0];
-    }
-
-    if (!territory && zip_code) {
-      const { data } = await supabase
-        .from('territories')
-        .select('id, territory_name, territory_code')
-        .contains('zip_codes', [zip_code])
-        .eq('is_active', true)
-        .limit(1);
-      
-      if (data && data.length > 0) territory = data[0];
-    }
-
-    if (!territory && state) {
-      const { data } = await supabase
-        .from('territories')
-        .select('id, territory_name, territory_code')
-        .eq('state', state)
-        .eq('is_active', true)
-        .limit(1);
-      
-      if (data && data.length > 0) territory = data[0];
-    }
-
-    if (!territory) {
+    if (!county) {
       return res.status(200).json({
-        success: true,
-        message: 'Unable to determine territory. Please contact any Montana Feed Company warehouse.',
-        specialists: []
+        result: "I need to know which county you're in to find the right specialist for you. Which Montana county is your ranch located in?",
+        error: true,
+        error_type: "missing_county"
       });
     }
 
-    const { data: specialists, error } = await supabase
-      .from('specialists')
-      .select('first_name, last_name, email, phone, specialties')
-      .eq('territory_id', territory.id)
-      .eq('is_active', true);
+    // Find territory by county
+    const { data: territories, error: territoryError } = await supabase
+      .from('territories')
+      .select('id, name, counties')
+      .contains('counties', [county])
+      .limit(1);
 
-    if (error) throw error;
+    if (territoryError) throw territoryError;
+
+    if (!territories || territories.length === 0) {
+      return res.status(200).json({
+        result: `I couldn't find a territory assignment for ${county} County. Let me connect you with our main office at 406-683-2189, and they'll make sure you get the right specialist.`,
+        error: true,
+        error_type: "territory_not_found",
+        county: county
+      });
+    }
+
+    const territory = territories[0];
+
+    // Find specialist for this territory
+    const { data: specialists, error: specialistError } = await supabase
+      .from('specialists')
+      .select('id, first_name, last_name, phone, email, specialties')
+      .eq('territory_id', territory.id)
+      .eq('is_active', true)
+      .limit(1);
+
+    if (specialistError) throw specialistError;
+
+    if (!specialists || specialists.length === 0) {
+      return res.status(200).json({
+        result: `Your area is covered by our ${territory.name} territory, but I don't have a specialist assigned there right now. Our main office at 406-683-2189 can help you directly.`,
+        error: true,
+        error_type: "no_specialist_assigned",
+        territory: territory.name,
+        county: county
+      });
+    }
+
+    const specialist = specialists[0];
+    const specialistName = `${specialist.first_name} ${specialist.last_name}`;
+
+    // ✅ VAPI-COMPATIBLE RESPONSE FORMAT
+    // Create a conversational message about the specialist
+    let responseMessage = `Great! For ${county} County, your livestock specialist is ${specialistName}`;
+    
+    if (specialist.phone) {
+      responseMessage += `. You can reach them at ${specialist.phone}`;
+    }
+    
+    if (specialist.specialties && specialist.specialties.length > 0) {
+      responseMessage += `. They specialize in ${specialist.specialties.join(', ')}`;
+    }
+    
+    responseMessage += '.';
 
     return res.status(200).json({
-      success: true,
-      territory: territory.territory_name,
-      specialists: specialists.map(s => ({
-        name: `${s.first_name} ${s.last_name}`,
-        phone: s.phone,
-        email: s.email,
-        specialties: s.specialties
-      }))
+      result: responseMessage,
+      specialist: {
+        id: specialist.id,
+        name: specialistName,
+        first_name: specialist.first_name,
+        last_name: specialist.last_name,
+        phone: specialist.phone,
+        email: specialist.email,
+        specialties: specialist.specialties
+      },
+      territory: {
+        id: territory.id,
+        name: territory.name
+      },
+      county: county
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('Error finding specialist:', error);
+    
+    // ✅ VAPI-COMPATIBLE ERROR RESPONSE
+    return res.status(200).json({
+      result: "I'm having trouble looking up specialist information right now. You can call our main office at 406-683-2189 and they'll connect you with the right person.",
+      error: true,
+      error_type: "system_error",
+      error_details: error.message
+    });
   }
 };

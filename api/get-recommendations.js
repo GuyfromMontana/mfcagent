@@ -1,15 +1,13 @@
 // API Endpoint: /api/get-recommendations
-// Gets product recommendations based on needs
-
+// Provides product recommendations based on livestock needs - VAPI COMPATIBLE VERSION
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+  
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const supabase = createClient(
@@ -17,70 +15,105 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    const { livestock_type, production_stage, season, need } = req.body || {};
+    // Get parameters
+    const {
+      livestock_type,
+      herd_size,
+      season,
+      specific_need
+    } = req.method === 'GET' ? req.query : req.body;
 
-    let dbQuery = supabase
+    if (!livestock_type) {
+      return res.status(200).json({
+        result: "To give you the best recommendations, I need to know what type of livestock you're working with. Are you raising cattle, horses, sheep, or something else?",
+        error: true,
+        error_type: "missing_livestock_type"
+      });
+    }
+
+    // Query products based on livestock type
+    let query = supabase
       .from('products')
       .select('*')
+      .contains('livestock_types', [livestock_type.toLowerCase()])
       .eq('is_active', true);
 
-    if (livestock_type) {
-      dbQuery = dbQuery.eq('livestock_type', livestock_type);
+    // Add seasonal filter if provided
+    if (season) {
+      query = query.contains('recommended_seasons', [season.toLowerCase()]);
     }
 
-    if (need) {
-      const categoryMap = {
-        'mineral': 'Minerals',
-        'protein': 'Protein Supplements',
-        'energy': 'Grains',
-        'show': 'Complete Feeds'
-      };
-      const category = categoryMap[need.toLowerCase()];
-      if (category) {
-        dbQuery = dbQuery.eq('category', category);
-      }
+    // Add specific need filter if provided
+    if (specific_need) {
+      query = query.or(`category.ilike.%${specific_need}%,description.ilike.%${specific_need}%`);
     }
 
-    const { data, error } = await dbQuery
-      .order('is_featured', { ascending: false })
-      .limit(5);
+    const { data: products, error } = await query.limit(5);
 
     if (error) throw error;
 
-    const recommendations = data.map(p => ({
-      name: p.product_name,
-      code: p.product_code,
-      category: p.category,
-      description: p.description,
-      why_recommended: generateReason(p, production_stage, season, need)
-    }));
+    if (!products || products.length === 0) {
+      return res.status(200).json({
+        result: `I don't have specific product recommendations for ${livestock_type} right now. Let me connect you with one of our livestock specialists who can help. Would you like me to find the specialist for your area?`,
+        error: true,
+        error_type: "no_products_found",
+        livestock_type: livestock_type
+      });
+    }
+
+    // ✅ VAPI-COMPATIBLE RESPONSE FORMAT
+    // Build conversational recommendation message
+    let responseMessage = `Great! For your ${livestock_type}`;
+    
+    if (herd_size) {
+      responseMessage += ` operation with ${herd_size} head`;
+    }
+    
+    if (season) {
+      responseMessage += ` during ${season}`;
+    }
+    
+    responseMessage += `, I recommend: `;
+
+    const recommendations = products.map((p, idx) => {
+      let rec = p.product_name;
+      if (p.description) {
+        rec += ` - ${p.description}`;
+      }
+      return rec;
+    });
+
+    if (recommendations.length === 1) {
+      responseMessage += recommendations[0];
+    } else if (recommendations.length === 2) {
+      responseMessage += recommendations.join(' and ');
+    } else {
+      responseMessage += recommendations.slice(0, -1).join(', ') + ', and ' + recommendations[recommendations.length - 1];
+    }
+
+    responseMessage += '. Would you like more details about any of these products?';
 
     return res.status(200).json({
-      success: true,
-      recommendations: recommendations,
-      count: recommendations.length
+      result: responseMessage,
+      products: products.map(p => ({
+        id: p.id,
+        name: p.product_name,
+        category: p.category,
+        description: p.description,
+        livestock_types: p.livestock_types
+      })),
+      count: products.length
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('Error getting recommendations:', error);
+    
+    // ✅ VAPI-COMPATIBLE ERROR RESPONSE
+    return res.status(200).json({
+      result: "I'm having trouble accessing our product database right now. One of our livestock specialists can help you directly. Would you like me to find the specialist for your area?",
+      error: true,
+      error_type: "system_error",
+      error_details: error.message
+    });
   }
 };
-
-function generateReason(product, stage, season, need) {
-  let reason = `${product.product_name} is recommended because `;
-  
-  if (product.product_code === 'AV4-50' && stage === 'pregnant') {
-    reason += 'it contains organic trace minerals specifically formulated for pregnant and lactating cows.';
-  } else if (product.product_code === 'XPC-50' && season === 'winter') {
-    reason += 'it provides high protein (38%) to extend hay supplies during winter feeding.';
-  } else if (product.category === 'Minerals') {
-    reason += 'proper mineral supplementation is essential for cattle health and performance.';
-  } else if (product.category === 'Protein Supplements') {
-    reason += 'protein supplementation helps maintain body condition and supports production needs.';
-  } else {
-    reason += `it's a quality ${product.category.toLowerCase()} product for ${product.livestock_type.toLowerCase()}.`;
-  }
-  
-  return reason;
-}

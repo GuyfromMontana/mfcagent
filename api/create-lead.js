@@ -1,5 +1,5 @@
 // API Endpoint: /api/create-lead
-// Creates a new lead in the system
+// Creates a new lead in the system - VAPI COMPATIBLE VERSION
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
@@ -78,8 +78,8 @@ module.exports = async (req, res) => {
       .insert({
         first_name: finalFirstName,
         last_name: finalLastName,
-        phone: phone || null,  // Explicitly allow null
-        email: email || null,  // Explicitly allow null
+        phone: phone || null,
+        email: email || null,
         ranch_name: ranch_name || null,
         zip_code: zip_code || null,
         territory_id,
@@ -97,18 +97,26 @@ module.exports = async (req, res) => {
 
     if (error) throw error;
 
+    // ✅ VAPI-COMPATIBLE RESPONSE FORMAT
+    // Return a simple message that Vapi can use in the conversation
+    const responseMessage = assigned_specialist_id 
+      ? `Great! I've saved your information and assigned your inquiry to one of our Montana livestock specialists. They'll follow up with you soon about ${finalPrimaryInterest || 'your needs'}.`
+      : `Perfect! I've saved your information. One of our Montana Feed Company team members will reach out to you soon about ${finalPrimaryInterest || 'your inquiry'}.`;
+
     return res.status(200).json({
-      success: true,
+      result: responseMessage,
       lead_id: lead.id,
-      message: 'Lead created successfully',
-      assigned_specialist: assigned_specialist_id ? 'Assigned to territory specialist' : 'Pending assignment'
+      specialist_assigned: !!assigned_specialist_id
     });
 
   } catch (error) {
     console.error('Error creating lead:', error);
-    return res.status(500).json({ 
-      success: false, 
-      error: error.message 
+    
+    // ✅ VAPI-COMPATIBLE ERROR RESPONSE
+    return res.status(200).json({ 
+      result: "I apologize, but I had trouble saving your information. Could you please try again or call our main office at 406-683-2189?",
+      error: true,
+      error_details: error.message
     });
   }
 };

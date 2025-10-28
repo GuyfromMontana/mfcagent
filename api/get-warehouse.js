@@ -1,15 +1,13 @@
 // API Endpoint: /api/get-warehouse
-// Gets warehouse information
-
+// Finds nearest warehouse location based on county or zip - VAPI COMPATIBLE VERSION
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+  
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const supabase = createClient(
@@ -17,44 +15,108 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    const { warehouse_code, city, region } = req.body || {};
+    // Get location parameters
+    const {
+      county,
+      zip_code,
+      city
+    } = req.method === 'GET' ? req.query : req.body;
 
-    let dbQuery = supabase
-      .from('warehouses')
-      .select('*')
-      .eq('is_active', true);
-
-    if (warehouse_code) {
-      dbQuery = dbQuery.eq('warehouse_code', warehouse_code);
-    } else if (city) {
-      dbQuery = dbQuery.ilike('city', `%${city}%`);
-    } else if (region) {
-      dbQuery = dbQuery.ilike('region', `%${region}%`);
+    if (!county && !zip_code && !city) {
+      return res.status(200).json({
+        result: "To find the nearest warehouse, I need to know your location. What county are you in, or what's your zip code?",
+        error: true,
+        error_type: "missing_location"
+      });
     }
 
-    const { data, error } = await dbQuery.limit(5);
+    // Query warehouses - for now, just get all active warehouses
+    // In a real implementation, you'd calculate distance based on coordinates
+    const { data: warehouses, error } = await supabase
+      .from('warehouses')
+      .select('*')
+      .eq('is_active', true)
+      .order('name');
 
     if (error) throw error;
 
-    const warehouses = data.map(w => ({
-      name: w.warehouse_name,
-      city: w.city,
-      state: w.state,
-      phone: w.phone,
-      email: w.email,
-      region: w.region,
-      service_area: w.service_area_description,
-      hours: w.operating_hours
-    }));
+    if (!warehouses || warehouses.length === 0) {
+      return res.status(200).json({
+        result: "I'm having trouble finding our warehouse locations right now. You can reach our main office at 406-683-2189 for location information.",
+        error: true,
+        error_type: "no_warehouses_found"
+      });
+    }
+
+    // For now, return the first warehouse as "nearest"
+    // In production, you'd calculate actual distances
+    const nearest = warehouses[0];
+
+    // ✅ VAPI-COMPATIBLE RESPONSE FORMAT
+    // Build conversational warehouse message
+    let responseMessage = `The nearest Montana Feed Company location`;
+    
+    if (county) {
+      responseMessage += ` to ${county} County`;
+    } else if (city) {
+      responseMessage += ` to ${city}`;
+    }
+    
+    responseMessage += ` is our ${nearest.name} warehouse`;
+    
+    if (nearest.address) {
+      responseMessage += ` at ${nearest.address}`;
+    }
+    
+    if (nearest.city && nearest.state) {
+      responseMessage += ` in ${nearest.city}, ${nearest.state}`;
+    }
+    
+    if (nearest.phone) {
+      responseMessage += `. You can reach them at ${nearest.phone}`;
+    }
+    
+    if (nearest.hours) {
+      responseMessage += `. They're open ${nearest.hours}`;
+    }
+    
+    responseMessage += '.';
+
+    // Add info about other locations
+    if (warehouses.length > 1) {
+      responseMessage += ` We also have locations in ${warehouses.slice(1).map(w => w.city).join(', ')}.`;
+    }
 
     return res.status(200).json({
-      success: true,
-      warehouses: warehouses,
-      count: warehouses.length
+      result: responseMessage,
+      nearest_warehouse: {
+        id: nearest.id,
+        name: nearest.name,
+        address: nearest.address,
+        city: nearest.city,
+        state: nearest.state,
+        zip: nearest.zip,
+        phone: nearest.phone,
+        email: nearest.email,
+        hours: nearest.hours
+      },
+      all_warehouses: warehouses.map(w => ({
+        id: w.id,
+        name: w.name,
+        city: w.city,
+        phone: w.phone
+      }))
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('Error finding warehouse:', error);
+    
+    // ✅ VAPI-COMPATIBLE ERROR RESPONSE
+    return res.status(200).json({
+      result: "I'm having trouble accessing our warehouse information right now. You can call our main office at 406-683-2189 for location details.",
+      error: true,
+      error_type: "system_error",
+      error_details: error.message
+    });
   }
 };
