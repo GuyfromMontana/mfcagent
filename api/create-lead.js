@@ -1,5 +1,5 @@
 // API Endpoint: /api/create-lead
-// Creates a new lead in the system - VAPI COMPATIBLE VERSION WITH DETAILED LOGGING
+// Creates a new lead in the system - VAPI-COMPATIBLE VERSION (FIXED!)
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
@@ -10,12 +10,9 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  // 🔍 LOGGING: Log the entire request
   console.log('=== CREATE LEAD REQUEST RECEIVED ===');
   console.log('Method:', req.method);
-  console.log('Headers:', JSON.stringify(req.headers, null, 2));
-  console.log('Body:', JSON.stringify(req.body, null, 2));
-  console.log('Query:', JSON.stringify(req.query, null, 2));
+  console.log('Full body:', JSON.stringify(req.body, null, 2));
 
   try {
     const supabase = createClient(
@@ -23,15 +20,31 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    // 🔍 LOGGING: Log environment check
-    console.log('Supabase URL:', process.env.SUPABASE_URL ? 'Present' : 'MISSING');
-    console.log('Service Key:', process.env.SUPABASE_SERVICE_KEY ? 'Present' : 'MISSING');
+    // ✅ FIX: Extract parameters from the CORRECT location in Vapi's request
+    // Vapi sends data nested in message.toolCalls[0].function.arguments
+    let params = {};
+    
+    if (req.body?.message?.toolCalls?.[0]?.function?.arguments) {
+      // Vapi format: nested in message.toolCalls
+      params = req.body.message.toolCalls[0].function.arguments;
+      console.log('✅ Extracted from Vapi format');
+    } else if (req.body?.message?.toolWithToolCallList?.[0]?.toolCall?.function?.arguments) {
+      // Alternative Vapi format
+      params = req.body.message.toolWithToolCallList[0].toolCall.function.arguments;
+      console.log('✅ Extracted from alternative Vapi format');
+    } else {
+      // Direct format (for testing outside Vapi)
+      params = req.body || {};
+      console.log('✅ Using direct body format');
+    }
 
-    // Handle both old format (first_name/last_name) and new format (name)
+    console.log('Extracted params:', JSON.stringify(params, null, 2));
+
+    // Now extract the individual fields from params
     const {
-      name,           // NEW: Full name from Vapi
-      first_name,     // OLD: Separate first name
-      last_name,      // OLD: Separate last name
+      name,           
+      first_name,     
+      last_name,      
       phone,
       email,
       ranch_name,
@@ -39,12 +52,11 @@ module.exports = async (req, res) => {
       zip_code,
       livestock_types,
       herd_size,
-      notes,          // NEW: Notes from Vapi
-      primary_interest, // OLD: Primary interest
+      notes,          
+      primary_interest,
       conversation_id
-    } = req.body || {};
+    } = params;
 
-    // 🔍 LOGGING: Log what we received
     console.log('=== EXTRACTED PARAMETERS ===');
     console.log('name:', name);
     console.log('first_name:', first_name);
@@ -60,12 +72,10 @@ module.exports = async (req, res) => {
     let finalLastName = last_name;
     
     if (name && !first_name && !last_name) {
-      // Split "Guy Hanson" into "Guy" and "Hanson"
       const nameParts = name.trim().split(/\s+/);
       finalFirstName = nameParts[0] || null;
       finalLastName = nameParts.slice(1).join(' ') || null;
       
-      // 🔍 LOGGING: Log name parsing
       console.log('=== NAME PARSING ===');
       console.log('Original name:', name);
       console.log('Parsed first_name:', finalFirstName);
@@ -116,7 +126,6 @@ module.exports = async (req, res) => {
       }
     }
 
-    // 🔍 LOGGING: Log what we're about to insert
     console.log('=== PREPARING TO INSERT LEAD ===');
     const leadData = {
       first_name: finalFirstName,
@@ -150,12 +159,10 @@ module.exports = async (req, res) => {
       throw error;
     }
 
-    // 🔍 LOGGING: Log successful insert
     console.log('=== INSERT SUCCESS ===');
     console.log('Created lead:', JSON.stringify(lead, null, 2));
 
     // ✅ VAPI-COMPATIBLE RESPONSE FORMAT
-    // Return a simple message that Vapi can use in the conversation
     const responseMessage = assigned_specialist_id 
       ? `Great! I've saved your information and assigned your inquiry to one of our Montana livestock specialists. They'll follow up with you soon about ${finalPrimaryInterest || 'your needs'}.`
       : `Perfect! I've saved your information. One of our Montana Feed Company team members will reach out to you soon about ${finalPrimaryInterest || 'your inquiry'}.`;
@@ -166,7 +173,6 @@ module.exports = async (req, res) => {
       specialist_assigned: !!assigned_specialist_id
     };
 
-    // 🔍 LOGGING: Log response
     console.log('=== SENDING RESPONSE ===');
     console.log('Response:', JSON.stringify(response, null, 2));
 
@@ -174,12 +180,8 @@ module.exports = async (req, res) => {
 
   } catch (error) {
     console.error('=== CAUGHT ERROR ===');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    console.error('Full error:', JSON.stringify(error, null, 2));
+    console.error('Error:', error);
     
-    // ✅ VAPI-COMPATIBLE ERROR RESPONSE
     const errorResponse = { 
       result: "I apologize, but I had trouble saving your information. Could you please try again or call our main office at 406-683-2189?",
       error: true,
