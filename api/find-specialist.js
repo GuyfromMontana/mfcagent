@@ -31,7 +31,7 @@ module.exports = async (req, res) => {
     // Find territory by county
     const { data: territories, error: territoryError } = await supabase
       .from('territories')
-      .select('id, name, counties')
+      .select('id, territory_name, counties')
       .contains('counties', [county])
       .limit(1);
 
@@ -60,10 +60,10 @@ module.exports = async (req, res) => {
 
     if (!specialists || specialists.length === 0) {
       return res.status(200).json({
-        result: `Your area is covered by our ${territory.name} territory, but I don't have a specialist assigned there right now. Our main office at 406-683-2189 can help you directly.`,
+        result: `Your area is covered by our ${territory.territory_name} territory, but I don't have a specialist assigned there right now. Our main office at 406-683-2189 can help you directly.`,
         error: true,
         error_type: "no_specialist_assigned",
-        territory: territory.name,
+        territory: territory.territory_name,
         county: county
       });
     }
@@ -98,7 +98,7 @@ module.exports = async (req, res) => {
       },
       territory: {
         id: territory.id,
-        name: territory.name
+        name: territory.territory_name
       },
       county: county
     });
