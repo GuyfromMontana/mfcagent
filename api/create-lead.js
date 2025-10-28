@@ -1,13 +1,12 @@
 // API Endpoint: /api/create-lead
 // Creates a new lead in the system
-
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+  
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -17,9 +16,11 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
+    // Handle both old format (first_name/last_name) and new format (name)
     const {
-      first_name,
-      last_name,
+      name,           // NEW: Full name from Vapi
+      first_name,     // OLD: Separate first name
+      last_name,      // OLD: Separate last name
       phone,
       email,
       ranch_name,
@@ -27,9 +28,24 @@ module.exports = async (req, res) => {
       zip_code,
       livestock_types,
       herd_size,
-      primary_interest,
+      notes,          // NEW: Notes from Vapi
+      primary_interest, // OLD: Primary interest
       conversation_id
     } = req.body || {};
+
+    // Parse name into first_name and last_name if provided as single field
+    let finalFirstName = first_name;
+    let finalLastName = last_name;
+    
+    if (name && !first_name && !last_name) {
+      // Split "Guy Hanson" into "Guy" and "Hanson"
+      const nameParts = name.trim().split(/\s+/);
+      finalFirstName = nameParts[0] || null;
+      finalLastName = nameParts.slice(1).join(' ') || null;
+    }
+
+    // Use notes if primary_interest not provided
+    const finalPrimaryInterest = primary_interest || notes;
 
     // Find territory
     let territory_id = null;
@@ -60,17 +76,17 @@ module.exports = async (req, res) => {
     const { data: lead, error } = await supabase
       .from('leads')
       .insert({
-        first_name,
-        last_name,
-        phone,
-        email,
-        ranch_name,
-        zip_code,
+        first_name: finalFirstName,
+        last_name: finalLastName,
+        phone: phone || null,  // Explicitly allow null
+        email: email || null,  // Explicitly allow null
+        ranch_name: ranch_name || null,
+        zip_code: zip_code || null,
         territory_id,
         assigned_specialist_id,
-        livestock_types,
-        herd_size,
-        primary_interest,
+        livestock_types: livestock_types || null,
+        herd_size: herd_size || null,
+        primary_interest: finalPrimaryInterest,
         lead_source: 'Voice Agent Call',
         lead_status: 'new',
         initial_conversation_id: conversation_id,
@@ -89,7 +105,10 @@ module.exports = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('Error creating lead:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
   }
 };
