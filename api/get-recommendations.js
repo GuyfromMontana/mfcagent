@@ -91,7 +91,7 @@ module.exports = async (req, res) => {
       responseMessage += recommendations.slice(0, -1).join(', ') + ', and ' + recommendations[recommendations.length - 1];
     }
 
-    responseMessage += '. Would you like more details about any of these products?';
+    responseMessage += '. Would you like more details about any of these?';
 
     return res.status(200).json({
       result: responseMessage,
