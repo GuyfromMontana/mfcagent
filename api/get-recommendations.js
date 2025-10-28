@@ -35,12 +35,12 @@ module.exports = async (req, res) => {
     let query = supabase
       .from('products')
       .select('*')
-      .contains('livestock_types', [livestock_type.toLowerCase()])
+      .ilike('livestock_type', `%${livestock_type}%`)
       .eq('is_active', true);
 
     // Add seasonal filter if provided
     if (season) {
-      query = query.contains('recommended_seasons', [season.toLowerCase()]);
+      query = query.eq('seasonal', true);
     }
 
     // Add specific need filter if provided
@@ -100,7 +100,7 @@ module.exports = async (req, res) => {
         name: p.product_name,
         category: p.category,
         description: p.description,
-        livestock_types: p.livestock_types
+        livestock_type: p.livestock_type
       })),
       count: products.length
     });

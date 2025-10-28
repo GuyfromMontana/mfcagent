@@ -1,5 +1,3 @@
-Output
-
 // API Endpoint: /api/search-products
 // Searches products database by name, category, or description - VAPI COMPATIBLE VERSION
 const { createClient } = require('@supabase/supabase-js');
@@ -50,7 +48,7 @@ module.exports = async (req, res) => {
 
     // Filter by livestock type
     if (livestock_type) {
-      query = query.contains('livestock_types', [livestock_type.toLowerCase()]);
+      query = query.ilike('livestock_type', `%${livestock_type}%`);
     }
 
     const { data: products, error } = await query.limit(5);
@@ -124,8 +122,8 @@ module.exports = async (req, res) => {
         name: p.product_name,
         category: p.category,
         description: p.description,
-        livestock_types: p.livestock_types,
-        price: p.price
+        livestock_type: p.livestock_type,
+        price: p.price_per_unit
       })),
       count: products.length
     });
@@ -142,6 +140,5 @@ module.exports = async (req, res) => {
     });
   }
 };
-
 
 
