@@ -1,5 +1,5 @@
 // API Endpoint: /api/create-lead
-// Creates a new lead in the system - VAPI-COMPATIBLE VERSION (FIXED!)
+// FIXED: Handles "County" suffix in county names
 const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async (req, res) => {
@@ -20,27 +20,23 @@ module.exports = async (req, res) => {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    // ✅ FIX: Extract parameters from the CORRECT location in Vapi's request
-    // Vapi sends data nested in message.toolCalls[0].function.arguments
+    // Extract parameters from the CORRECT location in Vapi's request
     let params = {};
     
     if (req.body?.message?.toolCalls?.[0]?.function?.arguments) {
-      // Vapi format: nested in message.toolCalls
       params = req.body.message.toolCalls[0].function.arguments;
       console.log('✅ Extracted from Vapi format');
     } else if (req.body?.message?.toolWithToolCallList?.[0]?.toolCall?.function?.arguments) {
-      // Alternative Vapi format
       params = req.body.message.toolWithToolCallList[0].toolCall.function.arguments;
       console.log('✅ Extracted from alternative Vapi format');
     } else {
-      // Direct format (for testing outside Vapi)
       params = req.body || {};
       console.log('✅ Using direct body format');
     }
 
     console.log('Extracted params:', JSON.stringify(params, null, 2));
 
-    // Now extract the individual fields from params
+    // Extract individual fields
     const {
       name,           
       first_name,     
@@ -63,7 +59,7 @@ module.exports = async (req, res) => {
     console.log('last_name:', last_name);
     console.log('phone:', phone);
     console.log('email:', email);
-    console.log('county:', county);
+    console.log('county (raw):', county);
     console.log('notes:', notes);
     console.log('primary_interest:', primary_interest);
 
@@ -82,27 +78,44 @@ module.exports = async (req, res) => {
       console.log('Parsed last_name:', finalLastName);
     }
 
+    // 🔧 FIX: Strip "County" from county name for database lookup
+    let countyForLookup = county;
+    if (county) {
+      // Remove "County" suffix (case insensitive) and trim whitespace
+      countyForLookup = county.replace(/\s+county\s*$/i, '').trim();
+      console.log('=== COUNTY NAME NORMALIZATION ===');
+      console.log('Original county:', county);
+      console.log('Normalized county for lookup:', countyForLookup);
+    }
+
     // Use notes if primary_interest not provided
     const finalPrimaryInterest = primary_interest || notes;
 
     // Find territory
     let territory_id = null;
-    if (county) {
+    if (countyForLookup) {
       console.log('=== TERRITORY LOOKUP ===');
-      console.log('Looking up territory for county:', county);
+      console.log('Looking up territory for county:', countyForLookup);
       
       const { data, error: territoryError } = await supabase
         .from('territories')
         .select('id')
-        .contains('counties', [county])
+        .contains('counties', [countyForLookup])
         .limit(1);
       
       if (territoryError) {
         console.error('Territory lookup error:', territoryError);
       } else {
         console.log('Territory lookup result:', data);
-        if (data && data.length > 0) territory_id = data[0].id;
+        if (data && data.length > 0) {
+          territory_id = data[0].id;
+          console.log('✅ Found territory_id:', territory_id);
+        } else {
+          console.log('⚠️ No territory found for county:', countyForLookup);
+        }
       }
+    } else {
+      console.log('⚠️ No county provided, skipping territory lookup');
     }
 
     // Find specialist
@@ -122,8 +135,15 @@ module.exports = async (req, res) => {
         console.error('Specialist lookup error:', specialistError);
       } else {
         console.log('Specialist lookup result:', data);
-        if (data && data.length > 0) assigned_specialist_id = data[0].id;
+        if (data && data.length > 0) {
+          assigned_specialist_id = data[0].id;
+          console.log('✅ Found assigned_specialist_id:', assigned_specialist_id);
+        } else {
+          console.log('⚠️ No active specialist found for territory_id:', territory_id);
+        }
       }
+    } else {
+      console.log('⚠️ No territory_id, skipping specialist lookup');
     }
 
     console.log('=== PREPARING TO INSERT LEAD ===');
@@ -162,7 +182,7 @@ module.exports = async (req, res) => {
     console.log('=== INSERT SUCCESS ===');
     console.log('Created lead:', JSON.stringify(lead, null, 2));
 
-    // ✅ VAPI-COMPATIBLE RESPONSE FORMAT
+    // VAPI-COMPATIBLE RESPONSE FORMAT
     const responseMessage = assigned_specialist_id 
       ? `Great! I've saved your information and assigned your inquiry to one of our Montana livestock specialists. They'll follow up with you soon about ${finalPrimaryInterest || 'your needs'}.`
       : `Perfect! I've saved your information. One of our Montana Feed Company team members will reach out to you soon about ${finalPrimaryInterest || 'your inquiry'}.`;
