@@ -360,7 +360,7 @@ module.exports = async (req, res) => {
           console.log(`📧 Sending email to ${recipient.role}: ${recipient.email}`);
           
           const { data, error } = await resend.emails.send({
-            from: 'Montana Feed Company <leads@montanafeed.com>',
+            from: 'Montana Feed Company <leads@axmen.com>',
             to: recipient.email,
             subject: emailSubject,
             html: emailHtml
