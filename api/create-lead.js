@@ -15,6 +15,16 @@ module.exports = async (req, res) => {
   console.log('Method:', req.method);
   console.log('Full body:', JSON.stringify(req.body, null, 2));
 
+  // Extract toolCallId early for Vapi response
+  let toolCallId = null;
+  if (req.body?.message?.toolCalls?.[0]?.id) {
+    toolCallId = req.body.message.toolCalls[0].id;
+    console.log('✅ Extracted toolCallId:', toolCallId);
+  } else if (req.body?.message?.toolWithToolCallList?.[0]?.toolCall?.id) {
+    toolCallId = req.body.message.toolWithToolCallList[0].toolCall.id;
+    console.log('✅ Extracted toolCallId (alt format):', toolCallId);
+  }
+
   try {
     const supabase = createClient(
       process.env.SUPABASE_URL,
@@ -396,9 +406,10 @@ module.exports = async (req, res) => {
       : `Perfect! I've saved your information. One of our Montana Feed Company team members will reach out to you soon about ${finalPrimaryInterest || 'your inquiry'}.`;
 
     const response = {
-      result: responseMessage,
-      lead_id: lead.id,
-      specialist_assigned: !!assigned_specialist_id
+      results: [{
+        toolCallId: toolCallId,
+        result: responseMessage
+      }]
     };
 
     console.log('=== SENDING RESPONSE ===');
@@ -411,9 +422,10 @@ module.exports = async (req, res) => {
     console.error('Error:', error);
     
     const errorResponse = { 
-      result: "I apologize, but I had trouble saving your information. Could you please try again or call our main office at 406-683-2189?",
-      error: true,
-      error_details: error.message
+      results: [{
+        toolCallId: toolCallId,
+        result: "I apologize, but I had trouble saving your information. Could you please try again or call our main office at 406-683-2189?"
+      }]
     };
 
     console.log('Sending error response:', JSON.stringify(errorResponse, null, 2));
