@@ -281,7 +281,7 @@ async def health_check():
         raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
 
 # ============================================================================
-# RUN SERVER (for local testing)
+# RUN SERVER 
 # ============================================================================
 
 if __name__ == "__main__":
