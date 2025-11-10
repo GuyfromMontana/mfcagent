@@ -218,27 +218,39 @@ async def get_user_facts(phone_number: str):
     """
     Testing endpoint to see what Zep knows about a user.
     """
+    user_id = phone_number.replace("+", "")
+    
     try:
-        # Search for facts about this user
-        results = await zep.memory.search_sessions(
-            text="",  # Empty query returns all facts
-            user_id=phone_number,
-            search_scope="facts"
-        )
+        # Get user from Zep
+        user = await zep.user.get(user_id=user_id)
         
-        facts = []
-        for result in results.results:
-            if hasattr(result, 'fact'):
-                facts.append({
-                    "fact": result.fact,
-                    "created_at": str(result.created_at) if hasattr(result, 'created_at') else None
-                })
+        # Get sessions for this user
+        sessions = await zep.memory.list_sessions(user_id=user_id, limit=10)
+        
+        all_facts = []
+        session_count = 0
+        
+        # Go through each session and extract facts
+        for session in sessions.sessions:
+            session_count += 1
+            try:
+                memory = await zep.memory.get(session_id=session.session_id)
+                if hasattr(memory, 'facts') and memory.facts:
+                    for fact in memory.facts:
+                        all_facts.append({
+                            "fact": fact.fact if hasattr(fact, 'fact') else str(fact),
+                            "session": session.session_id
+                        })
+            except Exception as session_error:
+                print(f"Error getting memory for session {session.session_id}: {session_error}")
+                continue
         
         return {
             "success": True,
             "user_id": phone_number,
-            "facts": facts,
-            "total_facts": len(facts)
+            "sessions_checked": session_count,
+            "facts": all_facts,
+            "total_facts": len(all_facts)
         }
         
     except Exception as e:
@@ -283,7 +295,6 @@ async def health_check():
 # ============================================================================
 # RUN SERVER 
 # ============================================================================
-
 
 if __name__ == "__main__":
     import uvicorn
