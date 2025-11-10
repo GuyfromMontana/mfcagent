@@ -1,5 +1,5 @@
 fastapi
 uvicorn[standard]
 supabase
-zep-python
 python-dotenv
+zep_cloud
