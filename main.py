@@ -1,20 +1,19 @@
 """
 Montana Feed Company Voice Agent with Zep Memory Integration
-This API runs on Railway and connects Vapi with Zep for caller memory
+This API runs on Railway and connects Vapi with Zep Cloud v3 for caller memory
 """
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from datetime import datetime
 from zep_cloud.client import Zep
-from zep_cloud.types import Message
 import os
 import json
 
 # Initialize FastAPI
 app = FastAPI(title="MFC Voice Agent with Memory")
 
-# Initialize Zep (API key from environment variable)
+# Initialize Zep Cloud client (API key from environment variable)
 zep = Zep(api_key=os.getenv("ZEP_API_KEY"))
 
 # ============================================================================
@@ -88,10 +87,10 @@ async def handle_vapi_webhook(request: Request):
             print(f"   Top-level payload keys: {list(payload.keys())}")
             print(f"   Message keys: {list(message_data.keys())}")
             
-            # Check if transcript is at message level
+            # Check if messages array exists at message level
             transcript = None
             if "messages" in message_data:
-                print(f"   ✓ messages found at message level!")
+                print(f"   ✓ Messages found at message level!")
                 transcript = message_data.get("messages")
                 print(f"   Transcript length: {len(transcript) if transcript else 0}")
                 if transcript and len(transcript) > 0:
@@ -106,13 +105,13 @@ async def handle_vapi_webhook(request: Request):
             print(f"   Phone: {phone_number}")
             print(f"   Call ID: {call_id}")
             
-            # If no transcript at message level, check call level
+            # If no messages at message level, check call level
             if not transcript:
                 print(f"   Checking call level for messages...")
                 print(f"   Call data keys: {list(call_data.keys())}")
                 transcript = call_data.get("messages")
                 if transcript:
-                    print(f"   ✓ Transcript found at call level!")
+                    print(f"   ✓ Messages found at call level!")
                     print(f"   Transcript length: {len(transcript)}")
             
             if phone_number and transcript:
@@ -131,17 +130,17 @@ async def handle_vapi_webhook(request: Request):
                     print(f"   Formatted messages: {len(formatted_transcript)}")
                     
                     if formatted_transcript:
-                        # Save to Zep
-                        session_id = f"mfc_{phone_number}_{call_id}"
+                        # Save to Zep using thread_id as session_id
+                        thread_id = f"mfc_{phone_number}_{call_id}"
                         await save_conversation(
                             SaveConversationRequest(
                                 phone_number=phone_number,
-                                session_id=session_id,
+                                session_id=thread_id,
                                 transcript=formatted_transcript
                             )
                         )
                         
-                        print(f"✓ Conversation saved successfully to session: {session_id}")
+                        print(f"✓ Conversation saved successfully to thread: {thread_id}")
                     else:
                         print(f"⚠️ No messages with content to save")
                     
@@ -178,36 +177,36 @@ async def get_caller_context(request: CallerContextRequest):
     Returns context about the caller from previous conversations.
     """
     user_id = request.phone_number
-    session_id = f"call-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    # Use a consistent thread ID pattern for this user's calls
+    thread_id = f"mfc_{user_id}_current"
     
     print(f"📞 Incoming call from: {user_id}")
     
     try:
         # Try to get existing user from Zep
-        user = await zep.user.get(user_id=user_id)
+        user = zep.user.get(user_id=user_id)
         print(f"✓ Found existing caller: {user_id}")
         
         # Get memory context for this user
         try:
-            memory = await zep.memory.get(
-                session_id=session_id,
+            # Get user context from their thread
+            context_result = zep.thread.get_user_context(
+                thread_id=thread_id,
                 user_id=user_id
             )
             
-            # Zep automatically generates a context string
-            context = memory.context if memory.context else "Returning caller, but no previous conversation details available."
-            
-            # Also get recent facts
-            facts = memory.facts if hasattr(memory, 'facts') else []
+            # Extract context string and facts
+            context = context_result.context if hasattr(context_result, 'context') else "Returning caller, but no previous conversation details available."
+            facts = context_result.facts if hasattr(context_result, 'facts') else []
             
             print(f"✓ Retrieved memory context ({len(facts)} facts)")
             
             return {
                 "success": True,
                 "is_new_caller": False,
-                "session_id": session_id,
+                "session_id": thread_id,
                 "context": context,
-                "facts": facts[:5],  # Send top 5 most relevant facts
+                "facts": facts[:5] if facts else [],  # Send top 5 most relevant facts
                 "message": "Returning caller - memory loaded"
             }
             
@@ -216,7 +215,7 @@ async def get_caller_context(request: CallerContextRequest):
             return {
                 "success": True,
                 "is_new_caller": False,
-                "session_id": session_id,
+                "session_id": thread_id,
                 "context": "Returning caller - welcome them back but no previous conversation details available.",
                 "message": "User exists but memory unavailable"
             }
@@ -226,15 +225,27 @@ async def get_caller_context(request: CallerContextRequest):
         print(f"✓ New caller detected: {user_id}")
         
         try:
-            await zep.user.add(user_id=user_id)
+            zep.user.add(
+                user_id=user_id,
+                first_name="Montana",  # Placeholder - update with actual name if captured
+                last_name="Rancher"
+            )
             print(f"✓ Created new user in Zep: {user_id}")
+            
+            # Create initial thread for this user
+            zep.thread.add(
+                thread_id=thread_id,
+                user_id=user_id
+            )
+            print(f"✓ Created new thread in Zep: {thread_id}")
+            
         except Exception as create_error:
-            print(f"⚠ Error creating user: {str(create_error)}")
+            print(f"⚠ Error creating user/thread: {str(create_error)}")
         
         return {
             "success": True,
             "is_new_caller": True,
-            "session_id": session_id,
+            "session_id": thread_id,
             "context": "This is a new caller. Be welcoming and friendly. Ask about their operation - herd size, location, and what they need help with today.",
             "message": "New caller - no previous history"
         }
@@ -247,30 +258,57 @@ async def get_caller_context(request: CallerContextRequest):
 async def save_conversation(request: SaveConversationRequest):
     """
     Called by Vapi after a call ends.
-    Saves the conversation transcript to Zep memory.
+    Saves the conversation transcript to Zep memory using the thread API.
     """
     user_id = request.phone_number
+    thread_id = request.session_id
     
     print(f"💾 Saving conversation for: {user_id}")
-    print(f"   Session: {request.session_id}")
+    print(f"   Thread: {thread_id}")
     print(f"   Messages: {len(request.transcript)}")
     
     try:
-        # Convert transcript to Zep messages
+        # Ensure user exists in Zep
+        try:
+            zep.user.get(user_id=user_id)
+            print(f"✓ User exists in Zep")
+        except:
+            # Create user if they don't exist
+            zep.user.add(
+                user_id=user_id,
+                first_name="Montana",
+                last_name="Rancher"
+            )
+            print(f"✓ Created new user in Zep: {user_id}")
+        
+        # Ensure thread exists
+        try:
+            zep.thread.get(thread_id=thread_id)
+            print(f"✓ Thread exists in Zep")
+        except:
+            # Create thread if it doesn't exist
+            zep.thread.add(
+                thread_id=thread_id,
+                user_id=user_id
+            )
+            print(f"✓ Created new thread in Zep: {thread_id}")
+        
+        # Convert transcript to Zep Cloud message format
         messages = []
         for msg in request.transcript:
-            messages.append(
-                Message(
-                    role_type=msg.get("role", "user"),  # "user" or "assistant"
-                    role=msg.get("name", "caller" if msg.get("role") == "user" else "agent"),
-                    content=msg["content"]
-                )
-            )
+            role = msg.get("role", "user")
+            content = msg["content"]
+            
+            # Zep Cloud expects specific message format
+            messages.append({
+                "role": "user" if role == "user" else "assistant",
+                "content": content,
+                "name": "Caller" if role == "user" else "Montana Feed Agent"
+            })
         
-        # Add messages to Zep
-        result = await zep.memory.add(
-            session_id=request.session_id,
-            user_id=user_id,
+        # Add messages to the thread
+        zep.thread.add_messages(
+            thread_id=thread_id,
             messages=messages
         )
         
@@ -279,13 +317,15 @@ async def save_conversation(request: SaveConversationRequest):
         return {
             "success": True,
             "user_id": user_id,
-            "session_id": request.session_id,
+            "thread_id": thread_id,
             "messages_saved": len(messages),
             "message": "Conversation saved to memory"
         }
         
     except Exception as e:
         print(f"❌ Error saving conversation: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to save conversation: {str(e)}")
 
 # ============================================================================
@@ -316,10 +356,9 @@ async def add_ranch_data(request: AddRanchDataRequest):
         if request.specialist_name:
             ranch_data["specialist_name"] = request.specialist_name
         
-        # Add to Zep graph
-        await zep.graph.add(
+        # Add to Zep graph using the new API
+        zep.graph.add(
             user_id=user_id,
-            type="json",
             data=ranch_data
         )
         
@@ -344,21 +383,22 @@ async def add_ranch_data(request: AddRanchDataRequest):
 async def get_user_facts(phone_number: str):
     """
     Testing endpoint to see what Zep knows about a user.
+    Uses the graph search API to find facts.
     """
     try:
-        # Search for facts about this user
-        results = await zep.memory.search_sessions(
-            text="",  # Empty query returns all facts
+        # Search the user's graph for facts
+        search_results = zep.graph.search(
             user_id=phone_number,
-            search_scope="facts"
+            query="",  # Empty query to get all facts
+            scope="edges"  # Search for facts (edges in the graph)
         )
         
         facts = []
-        for result in results.results:
-            if hasattr(result, 'fact'):
+        if hasattr(search_results, 'edges'):
+            for edge in search_results.edges[:10]:  # Limit to top 10
                 facts.append({
-                    "fact": result.fact,
-                    "created_at": str(result.created_at) if hasattr(result, 'created_at') else None
+                    "fact": edge.fact if hasattr(edge, 'fact') else str(edge),
+                    "created_at": str(edge.created_at) if hasattr(edge, 'created_at') else None
                 })
         
         return {
@@ -386,6 +426,7 @@ async def root():
         "service": "MFC Voice Agent Memory API",
         "status": "running",
         "zep_configured": bool(os.getenv("ZEP_API_KEY")),
+        "zep_version": "Cloud v3",
         "endpoints": {
             "webhook": "POST /",
             "get_context": "/get-caller-context",
