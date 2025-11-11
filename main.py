@@ -41,98 +41,101 @@ class AddRanchDataRequest(BaseModel):
     specialist_name: str = None
 
 # ============================================================================
-# HEALTH CHECK & MAIN WEBHOOK
+# VAPI WEBHOOK HANDLER (Main entry point for webhooks)
 # ============================================================================
 
-@app.get("/")
-async def root():
-    return {
-        "service": "MFC Voice Agent Memory API",
-        "status": "running",
-        "zep_configured": bool(os.getenv("ZEP_API_KEY")),
-        "endpoints": {
-            "webhook": "POST /",
-            "health": "/health",
-            "get_context": "/get-caller-context",
-            "save_conversation": "/save-conversation",
-            "add_ranch_data": "/add-ranch-data",
-            "get_facts": "/get-user-facts/{phone_number}"
-        }
-    }
-
 @app.post("/")
-async def vapi_webhook(request: Request):
+async def handle_vapi_webhook(request: Request):
     """
-    Main webhook endpoint for all Vapi events.
-    Vapi sends different event types here, and we route them accordingly.
+    Main webhook handler for all Vapi events.
+    Processes different webhook types and triggers appropriate actions.
     """
     try:
         # Get the webhook payload
         payload = await request.json()
-        
-        # Get the message type
         message_type = payload.get("message", {}).get("type")
         
         print(f"📨 Received webhook: {message_type}")
         
-        # Route based on message type
+        # ASSISTANT REQUEST - Call starting, get caller context
         if message_type == "assistant-request":
-            # Call started - get caller context
-            phone_number = payload.get("call", {}).get("customer", {}).get("number", "")
+            phone_number = payload.get("message", {}).get("call", {}).get("customer", {}).get("number")
+            print(f"📞 Incoming call from: {phone_number}")
             
-            if phone_number:
-                context_request = CallerContextRequest(phone_number=phone_number)
-                return await get_caller_context(context_request)
-            else:
-                return {"success": False, "message": "No phone number provided"}
-        
-        elif message_type == "end-of-call-report":
-            # Call ended - save conversation
-            call_data = payload.get("call", {})
-            phone_number = call_data.get("customer", {}).get("number", "")
-            
-            if phone_number:
-                # Extract transcript
-                transcript = []
-                messages = payload.get("message", {}).get("messages", [])
-                
-                for msg in messages:
-                    transcript.append({
-                        "role": msg.get("role", "user"),
-                        "content": msg.get("content", "")
-                    })
-                
-                save_request = SaveConversationRequest(
-                    phone_number=phone_number,
-                    session_id=call_data.get("id", ""),
-                    transcript=transcript,
-                    call_duration=call_data.get("duration", 0)
+            # Get context from Zep
+            try:
+                context_response = await get_caller_context(
+                    CallerContextRequest(phone_number=phone_number)
                 )
                 
-                return await save_conversation(save_request)
-            else:
-                return {"success": False, "message": "No phone number in end-of-call report"}
+                print(f"📝 Retrieved context from Zep: {context_response.get('is_new_caller')}")
+                
+                # Return context to Vapi to inject into conversation
+                return {
+                    "assistant": {
+                        "firstMessage": context_response.get("context", "")
+                    }
+                }
+            except Exception as e:
+                print(f"❌ Error getting context: {str(e)}")
+                return {"assistant": {}}
         
+        # END OF CALL REPORT - Call ended, save conversation
+        elif message_type == "end-of-call-report":
+            call_data = payload.get("message", {}).get("call", {})
+            phone_number = call_data.get("customer", {}).get("number")
+            transcript = call_data.get("transcript", [])
+            call_id = call_data.get("id")
+            
+            print(f"💾 Saving conversation to Zep")
+            print(f"   Phone: {phone_number}")
+            print(f"   Call ID: {call_id}")
+            print(f"   Messages: {len(transcript)}")
+            
+            if phone_number and transcript:
+                try:
+                    # Convert Vapi transcript format to our format
+                    formatted_transcript = []
+                    for msg in transcript:
+                        role = msg.get("role", "assistant")
+                        content = msg.get("content", "") or msg.get("text", "")
+                        if content:
+                            formatted_transcript.append({
+                                "role": role,
+                                "content": content
+                            })
+                    
+                    # Save to Zep
+                    session_id = f"mfc_{phone_number}_{call_id}"
+                    await save_conversation(
+                        SaveConversationRequest(
+                            phone_number=phone_number,
+                            session_id=session_id,
+                            transcript=formatted_transcript
+                        )
+                    )
+                    
+                    print(f"✓ Conversation saved successfully to session: {session_id}")
+                    
+                except Exception as e:
+                    print(f"❌ Error saving conversation: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                print(f"⚠️ Missing phone number or transcript")
+            
+            return {"status": "success"}
+        
+        # OTHER WEBHOOK TYPES - Just acknowledge
         else:
-            # Unknown event type - just acknowledge
-            print(f"⚠️ Unknown webhook type: {message_type}")
-            return {"success": True, "message": f"Received {message_type}"}
-    
+            print(f"⚠️ Unhandled webhook type: {message_type}")
+            return {"status": "acknowledged"}
+            
     except Exception as e:
-        print(f"❌ Webhook error: {str(e)}")
-        return {"success": False, "error": str(e)}
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint for Railway"""
-    try:
-        return {
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "zep_api_key_set": bool(os.getenv("ZEP_API_KEY"))
-        }
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+        print(f"❌ Webhook handler error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
 # ============================================================================
 # ENDPOINT 1: GET CALLER CONTEXT (Called when call starts)
@@ -312,39 +315,27 @@ async def get_user_facts(phone_number: str):
     """
     Testing endpoint to see what Zep knows about a user.
     """
-    user_id = phone_number.replace("+", "")
-    
     try:
-        # Get user from Zep
-        user = await zep.user.get(user_id=user_id)
+        # Search for facts about this user
+        results = await zep.memory.search_sessions(
+            text="",  # Empty query returns all facts
+            user_id=phone_number,
+            search_scope="facts"
+        )
         
-        # Get sessions for this user
-        sessions = await zep.memory.list_sessions(user_id=user_id, limit=10)
-        
-        all_facts = []
-        session_count = 0
-        
-        # Go through each session and extract facts
-        for session in sessions.sessions:
-            session_count += 1
-            try:
-                memory = await zep.memory.get(session_id=session.session_id)
-                if hasattr(memory, 'facts') and memory.facts:
-                    for fact in memory.facts:
-                        all_facts.append({
-                            "fact": fact.fact if hasattr(fact, 'fact') else str(fact),
-                            "session": session.session_id
-                        })
-            except Exception as session_error:
-                print(f"Error getting memory for session {session.session_id}: {session_error}")
-                continue
+        facts = []
+        for result in results.results:
+            if hasattr(result, 'fact'):
+                facts.append({
+                    "fact": result.fact,
+                    "created_at": str(result.created_at) if hasattr(result, 'created_at') else None
+                })
         
         return {
             "success": True,
             "user_id": phone_number,
-            "sessions_checked": session_count,
-            "facts": all_facts,
-            "total_facts": len(all_facts)
+            "facts": facts,
+            "total_facts": len(facts)
         }
         
     except Exception as e:
@@ -355,10 +346,44 @@ async def get_user_facts(phone_number: str):
         }
 
 # ============================================================================
-# RUN SERVER 
+# HEALTH CHECK & INFO
+# ============================================================================
+
+@app.get("/info")
+async def root():
+    """Service information"""
+    return {
+        "service": "MFC Voice Agent Memory API",
+        "status": "running",
+        "zep_configured": bool(os.getenv("ZEP_API_KEY")),
+        "endpoints": {
+            "webhook": "POST /",
+            "get_context": "/get-caller-context",
+            "save_conversation": "/save-conversation",
+            "add_ranch_data": "/add-ranch-data",
+            "get_facts": "/get-user-facts/{phone_number}",
+            "health": "/health",
+            "info": "/info"
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for Railway"""
+    try:
+        # Test Zep connection
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "zep_api_key_set": bool(os.getenv("ZEP_API_KEY"))
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
+
+# ============================================================================
+# RUN SERVER (for local testing)
 # ============================================================================
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
