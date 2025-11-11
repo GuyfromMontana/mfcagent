@@ -216,7 +216,7 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
             if content:
                 zep_messages.append(
                     Message(
-                        role_type=zep_role,
+                        role=zep_role,  # FIXED: Changed from role_type to role
                         content=content
                     )
                 )
