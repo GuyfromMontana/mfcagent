@@ -82,28 +82,38 @@ async def handle_vapi_webhook(request: Request):
         
         # END OF CALL REPORT - Call ended, save conversation
         elif message_type == "end-of-call-report":
-            # Lightweight debug logging to avoid rate limits
-            call_data = payload.get("message", {}).get("call", {})
+            # Debug: Show top-level message structure
+            message_data = payload.get("message", {})
+            print(f"💾 End-of-call-report received")
+            print(f"   Top-level payload keys: {list(payload.keys())}")
+            print(f"   Message keys: {list(message_data.keys())}")
+            
+            # Check if transcript is at message level
+            transcript = None
+            if "transcript" in message_data:
+                print(f"   ✓ Transcript found at message level!")
+                transcript = message_data.get("transcript")
+                print(f"   Transcript length: {len(transcript) if transcript else 0}")
+                if transcript and len(transcript) > 0:
+                    print(f"   First message keys: {list(transcript[0].keys())}")
+                    print(f"   First message sample: {transcript[0]}")
+            
+            # Get call data
+            call_data = message_data.get("call", {})
             phone_number = call_data.get("customer", {}).get("number")
             call_id = call_data.get("id")
             
-            print(f"💾 Saving conversation to Zep")
             print(f"   Phone: {phone_number}")
             print(f"   Call ID: {call_id}")
             
-            # Check what's in the call_data
-            print(f"   Call data keys: {list(call_data.keys())}")
-            
-            # Check transcript specifically
-            transcript = call_data.get("transcript")
-            print(f"   Transcript exists: {transcript is not None}")
-            print(f"   Transcript type: {type(transcript)}")
-            print(f"   Transcript length: {len(transcript) if transcript else 0}")
-            
-            # If there's a transcript, show structure of first message
-            if transcript and len(transcript) > 0:
-                print(f"   First message keys: {list(transcript[0].keys())}")
-                print(f"   First message sample: {transcript[0]}")
+            # If no transcript at message level, check call level
+            if not transcript:
+                print(f"   Checking call level for transcript...")
+                print(f"   Call data keys: {list(call_data.keys())}")
+                transcript = call_data.get("transcript")
+                if transcript:
+                    print(f"   ✓ Transcript found at call level!")
+                    print(f"   Transcript length: {len(transcript)}")
             
             if phone_number and transcript:
                 try:
@@ -111,7 +121,7 @@ async def handle_vapi_webhook(request: Request):
                     formatted_transcript = []
                     for msg in transcript:
                         role = msg.get("role", "assistant")
-                        content = msg.get("content", "") or msg.get("text", "")
+                        content = msg.get("content", "") or msg.get("text", "") or msg.get("message", "")
                         if content:
                             formatted_transcript.append({
                                 "role": role,
@@ -120,17 +130,20 @@ async def handle_vapi_webhook(request: Request):
                     
                     print(f"   Formatted messages: {len(formatted_transcript)}")
                     
-                    # Save to Zep
-                    session_id = f"mfc_{phone_number}_{call_id}"
-                    await save_conversation(
-                        SaveConversationRequest(
-                            phone_number=phone_number,
-                            session_id=session_id,
-                            transcript=formatted_transcript
+                    if formatted_transcript:
+                        # Save to Zep
+                        session_id = f"mfc_{phone_number}_{call_id}"
+                        await save_conversation(
+                            SaveConversationRequest(
+                                phone_number=phone_number,
+                                session_id=session_id,
+                                transcript=formatted_transcript
+                            )
                         )
-                    )
-                    
-                    print(f"✓ Conversation saved successfully to session: {session_id}")
+                        
+                        print(f"✓ Conversation saved successfully to session: {session_id}")
+                    else:
+                        print(f"⚠️ No messages with content to save")
                     
                 except Exception as e:
                     print(f"❌ Error saving conversation: {str(e)}")
@@ -138,6 +151,8 @@ async def handle_vapi_webhook(request: Request):
                     traceback.print_exc()
             else:
                 print(f"⚠️ Missing phone number or transcript")
+                print(f"   Phone exists: {phone_number is not None}")
+                print(f"   Transcript exists: {transcript is not None}")
             
             return {"status": "success"}
         
