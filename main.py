@@ -15,7 +15,12 @@ app = FastAPI(title="MFC Voice Agent with Memory")
 
 # Initialize Zep Cloud client (API key from environment variable)
 zep = Zep(api_key=os.getenv("ZEP_API_KEY"))
-
+# Initialize Zep Cloud client (API key from environment variable)
+zep_key = os.getenv("ZEP_API_KEY")
+print(f"🔑 Zep API Key loaded: {zep_key[:5]}...{zep_key[-5:] if zep_key else 'MISSING'}")
+print(f"🔑 Key length: {len(zep_key) if zep_key else 0}")
+print(f"🔑 Key starts with 'z_': {zep_key.startswith('z_') if zep_key else False}")
+zep = Zep(api_key=zep_key)
 # ============================================================================
 # DATA MODELS
 # ============================================================================
