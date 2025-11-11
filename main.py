@@ -90,8 +90,8 @@ async def handle_vapi_webhook(request: Request):
             
             # Check if transcript is at message level
             transcript = None
-            if "transcript" in message_data:
-                print(f"   ✓ Transcript found at message level!")
+            if "message" in message_data:
+                print(f"   ✓ messages found at message level!")
                 transcript = message_data.get("messages")
                 print(f"   Transcript length: {len(transcript) if transcript else 0}")
                 if transcript and len(transcript) > 0:
@@ -108,7 +108,7 @@ async def handle_vapi_webhook(request: Request):
             
             # If no transcript at message level, check call level
             if not transcript:
-                print(f"   Checking call level for transcript...")
+                print(f"   Checking call level for messages...")
                 print(f"   Call data keys: {list(call_data.keys())}")
                 transcript = call_data.get("messages")
                 if transcript:
