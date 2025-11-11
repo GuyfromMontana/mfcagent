@@ -216,7 +216,7 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
             if content:
                 zep_messages.append(
                     Message(
-                        role=zep_role,  # FIXED: Changed from role_type to role
+                        role=zep_role,
                         content=content
                     )
                 )
@@ -237,9 +237,9 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
                 existing_thread = zep.thread.get(thread_id=thread_id)
                 print(f"   ✓ Thread exists: {thread_id}")
             except Exception as e:
-                # Thread doesn't exist, create it
+                # Thread doesn't exist, create it using the CORRECT method
                 print(f"   Creating new thread: {thread_id}")
-                zep.thread.add(
+                zep.thread.create(
                     thread_id=thread_id,
                     user_id=user_id
                 )
