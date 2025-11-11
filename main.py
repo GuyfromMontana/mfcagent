@@ -90,7 +90,7 @@ async def handle_vapi_webhook(request: Request):
             
             # Check if transcript is at message level
             transcript = None
-            if "message" in message_data:
+            if "messages" in message_data:
                 print(f"   ✓ messages found at message level!")
                 transcript = message_data.get("messages")
                 print(f"   Transcript length: {len(transcript) if transcript else 0}")
