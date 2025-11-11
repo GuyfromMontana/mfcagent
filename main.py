@@ -285,6 +285,15 @@ async def save_conversation(request: SaveConversationRequest):
             )
             print(f"✓ Created new user in Zep: {user_id}")
         
+        # Ensure thread exists - create if it doesn't
+        try:
+            zep.thread.get(thread_id=thread_id)
+            print(f"✓ Thread exists in Zep")
+        except:
+            # Create thread if it doesn't exist
+            # Note: Zep Cloud creates threads differently - just pass user_id in add_messages
+            print(f"✓ Thread will be created with first message")
+        
         # Convert transcript to Zep Cloud message format
         messages = []
         for msg in request.transcript:
@@ -298,10 +307,11 @@ async def save_conversation(request: SaveConversationRequest):
                 "name": "Caller" if role == "user" else "Montana Feed Agent"
             })
         
-        # Add messages to the thread - thread is created automatically if it doesn't exist
+        # Add messages to the thread with user_id to create thread if needed
         zep.thread.add_messages(
             thread_id=thread_id,
-            messages=messages
+            messages=messages,
+            user_id=user_id  # This creates the thread if it doesn't exist
         )
         
         print(f"✓ Conversation saved successfully to thread: {thread_id}")
