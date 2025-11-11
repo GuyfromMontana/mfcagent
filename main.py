@@ -258,7 +258,6 @@ async def get_caller_context(request: CallerContextRequest):
 # ============================================================================
 # ENDPOINT 2: SAVE CONVERSATION (Called after call ends)
 # ============================================================================
-
 @app.post("/save-conversation")
 async def save_conversation(request: SaveConversationRequest):
     """
@@ -286,18 +285,6 @@ async def save_conversation(request: SaveConversationRequest):
             )
             print(f"✓ Created new user in Zep: {user_id}")
         
-        # Ensure thread exists
-        try:
-            zep.thread.get(thread_id=thread_id)
-            print(f"✓ Thread exists in Zep")
-        except:
-            # Create thread if it doesn't exist
-            zep.thread.add(
-                thread_id=thread_id,
-                user_id=user_id
-            )
-            print(f"✓ Created new thread in Zep: {thread_id}")
-        
         # Convert transcript to Zep Cloud message format
         messages = []
         for msg in request.transcript:
@@ -311,13 +298,13 @@ async def save_conversation(request: SaveConversationRequest):
                 "name": "Caller" if role == "user" else "Montana Feed Agent"
             })
         
-        # Add messages to the thread
+        # Add messages to the thread - thread is created automatically if it doesn't exist
         zep.thread.add_messages(
             thread_id=thread_id,
             messages=messages
         )
         
-        print(f"✓ Conversation saved successfully")
+        print(f"✓ Conversation saved successfully to thread: {thread_id}")
         
         return {
             "success": True,
