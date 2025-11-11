@@ -82,19 +82,28 @@ async def handle_vapi_webhook(request: Request):
         
         # END OF CALL REPORT - Call ended, save conversation
         elif message_type == "end-of-call-report":
-            # ADD DEBUG LOGGING - Show the full payload
-            print(f"🔍 Full end-of-call-report payload:")
-            print(json.dumps(payload, indent=2))
-            
+            # Lightweight debug logging to avoid rate limits
             call_data = payload.get("message", {}).get("call", {})
             phone_number = call_data.get("customer", {}).get("number")
-            transcript = call_data.get("transcript", [])
             call_id = call_data.get("id")
             
             print(f"💾 Saving conversation to Zep")
             print(f"   Phone: {phone_number}")
             print(f"   Call ID: {call_id}")
-            print(f"   Messages: {len(transcript)}")
+            
+            # Check what's in the call_data
+            print(f"   Call data keys: {list(call_data.keys())}")
+            
+            # Check transcript specifically
+            transcript = call_data.get("transcript")
+            print(f"   Transcript exists: {transcript is not None}")
+            print(f"   Transcript type: {type(transcript)}")
+            print(f"   Transcript length: {len(transcript) if transcript else 0}")
+            
+            # If there's a transcript, show structure of first message
+            if transcript and len(transcript) > 0:
+                print(f"   First message keys: {list(transcript[0].keys())}")
+                print(f"   First message sample: {transcript[0]}")
             
             if phone_number and transcript:
                 try:
@@ -108,6 +117,8 @@ async def handle_vapi_webhook(request: Request):
                                 "role": role,
                                 "content": content
                             })
+                    
+                    print(f"   Formatted messages: {len(formatted_transcript)}")
                     
                     # Save to Zep
                     session_id = f"mfc_{phone_number}_{call_id}"
@@ -391,4 +402,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))  
     uvicorn.run(app, host="0.0.0.0", port=port)
-
