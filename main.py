@@ -82,6 +82,10 @@ async def handle_vapi_webhook(request: Request):
         
         # END OF CALL REPORT - Call ended, save conversation
         elif message_type == "end-of-call-report":
+            # ADD DEBUG LOGGING - Show the full payload
+            print(f"🔍 Full end-of-call-report payload:")
+            print(json.dumps(payload, indent=2))
+            
             call_data = payload.get("message", {}).get("call", {})
             phone_number = call_data.get("customer", {}).get("number")
             transcript = call_data.get("transcript", [])
