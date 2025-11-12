@@ -201,8 +201,11 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
             )
             print(f"✓ Created new user in Zep: {user_id}")
         
-        # Format messages for Zep
+        # Format messages for Zep with character limit
+        MAX_MESSAGE_LENGTH = 2500  # Zep's limit
         zep_messages = []
+        truncated_count = 0
+        
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("message", "")
@@ -214,6 +217,11 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
                 zep_role = "user"
             
             if content:
+                # Truncate message if it exceeds Zep's limit
+                if len(content) > MAX_MESSAGE_LENGTH:
+                    content = content[:MAX_MESSAGE_LENGTH - 50] + "... [truncated]"
+                    truncated_count += 1
+                
                 zep_messages.append(
                     Message(
                         role=zep_role,
@@ -222,6 +230,8 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
                 )
         
         print(f"   Formatted messages: {len(zep_messages)}")
+        if truncated_count > 0:
+            print(f"   ⚠️ Truncated {truncated_count} messages that exceeded 2500 chars")
         
         if not zep_messages:
             print("⚠️ No messages to save")
