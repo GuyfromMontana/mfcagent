@@ -121,55 +121,95 @@ async def handle_vapi_webhook(request: Request):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
-async def get_caller_context(phone_number: str) -> dict:
+def get_caller_context(phone_number: str) -> dict:
     """
-    Retrieve context for a returning caller from Zep memory
-    This is called when Vapi makes an assistant-request
+    Retrieve conversation history and context for a returning caller.
+    Returns a summary that Vapi can use to personalize the greeting.
     """
     try:
-        print(f"\n🔍 Looking up caller context for: {phone_number}")
-        
-        # Use phone number as user_id
-        user_id = phone_number
-        
-        # Check if user exists
+        # Check if this caller exists in Zep
         try:
-            user = zep.user.get(user_id=user_id)
-            print(f"✓ Found returning caller: {user_id}")
+            user = zep.user.get(user_id=phone_number)
+            print(f"✓ Found existing user: {phone_number}")
         except Exception as e:
-            print(f"ℹ️ New caller (user not found): {user_id}")
+            # New caller - no history
+            print(f"ℹ New caller (no history): {phone_number}")
             return {
-                "status": "new_caller",
-                "message": "Welcome! This is your first call."
+                "is_returning_caller": False,
+                "summary": "First time caller - no previous conversation history."
             }
         
-        # Try to get recent conversations from threads
-        try:
-            # List all threads for this user
-            # Note: We might need to adjust this based on Zep Cloud API capabilities
-            # For now, return a basic context
+        # Get the user's conversation threads
+        threads = zep.thread.list_by_user_id(user_id=phone_number)
+        
+        if not threads or len(threads) == 0:
+            print(f"ℹ No threads found for: {phone_number}")
             return {
-                "status": "returning_caller",
-                "message": f"Welcome back! We have your information on file.",
-                "user_id": user_id
+                "is_returning_caller": False,
+                "summary": "No previous conversations found."
             }
-        except Exception as e:
-            print(f"⚠️ Error retrieving conversation history: {str(e)}")
+        
+        # Get the most recent thread
+        most_recent_thread = threads[0]  # Threads are returned newest first
+        thread_id = most_recent_thread.uuid
+        
+        print(f"✓ Found thread: {thread_id}")
+        
+        # Get memory/summary for this thread
+        try:
+            memory = zep.memory.get(session_id=thread_id)
+            
+            # Extract the relevant context
+            context_parts = []
+            
+            # Add facts if available
+            if memory.facts and len(memory.facts) > 0:
+                facts_text = "; ".join([fact.fact for fact in memory.facts[:5]])  # Top 5 facts
+                context_parts.append(f"Key facts: {facts_text}")
+            
+            # Add summary if available
+            if memory.summary and memory.summary.content:
+                context_parts.append(f"Previous conversation: {memory.summary.content}")
+            
+            if context_parts:
+                summary = " | ".join(context_parts)
+            else:
+                # Fallback: get last few messages manually
+                messages = zep.message.list(session_id=thread_id, limit=10)
+                recent_messages = []
+                for msg in messages[:5]:  # Last 5 messages
+                    role = "Customer" if msg.role == "user" else "Agent"
+                    recent_messages.append(f"{role}: {msg.content[:100]}")
+                summary = "Recent exchange: " + " | ".join(recent_messages)
+            
+            print(f"✓ Retrieved memory summary")
             return {
-                "status": "returning_caller",
-                "message": "Welcome back!",
-                "user_id": user_id
+                "is_returning_caller": True,
+                "summary": summary,
+                "last_conversation": most_recent_thread.created_at
+            }
+            
+        except Exception as e:
+            print(f"⚠️ Error getting memory: {e}")
+            # Fallback to basic message retrieval
+            messages = zep.message.list(session_id=thread_id, limit=5)
+            if messages and len(messages) > 0:
+                summary = f"Returning caller. Last spoke about: {messages[0].content[:200]}"
+            else:
+                summary = "Returning caller with previous conversation on file."
+            
+            return {
+                "is_returning_caller": True,
+                "summary": summary
             }
             
     except Exception as e:
-        print(f"❌ Error in get_caller_context: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error retrieving caller context: {e}")
         return {
-            "status": "error",
-            "message": "Unable to retrieve caller context"
+            "is_returning_caller": False,
+            "summary": "Unable to retrieve caller history."
         }
+
 
 async def save_conversation(phone_number: str, call_id: str, transcript: str, messages: list):
     """
