@@ -121,7 +121,9 @@ async def handle_vapi_webhook(request: Request):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-def get_caller_context(phone_number: str) -> dict:
+
+
+async def get_caller_context(phone_number: str) -> dict:
     """
     Retrieve conversation history and context for a returning caller.
     Returns a summary that Vapi can use to personalize the greeting.
@@ -316,6 +318,7 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
         traceback.print_exc()
         raise
 
+
 async def add_ranch_data(phone_number: str, ranch_data: dict):
     """
     Optional: Add structured ranch data to user metadata
@@ -338,6 +341,7 @@ async def add_ranch_data(phone_number: str, ranch_data: dict):
     except Exception as e:
         print(f"❌ Error adding ranch data: {str(e)}")
         raise
+
 
 if __name__ == "__main__":
     import uvicorn
