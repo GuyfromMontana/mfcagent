@@ -52,37 +52,93 @@ async def handle_vapi_webhook(request: Request):
         print(f"📨 Received webhook: {message_type}")
         
         # Handle assistant-started - when call begins
-        if message_type == "assistant-started":
+        if message_type == "assistant.started":
             phone_number = payload.get("message", {}).get("call", {}).get("customer", {}).get("number")
             if phone_number:
                 print(f"📞 Call started for: {phone_number}")
             return JSONResponse(content={"status": "acknowledged"})
-        
         # Handle function-call - this is how Vapi requests memory and executes tools
-        elif message_type == "function-call":
-            print("🔍 Function call received")
-            
-            # Extract function details
-            function_call = payload.get("message", {}).get("functionCall", {})
-            function_name = function_call.get("name")
-            parameters = function_call.get("parameters", {})
-            
-            # Get phone number
-            phone_number = payload.get("message", {}).get("call", {}).get("customer", {}).get("number")
-            
-            print(f"   Function: {function_name}")
-            print(f"   Phone: {phone_number}")
-            print(f"   Parameters: {parameters}")
-            
-            # Handle memory retrieval function
-            if function_name == "get_caller_history":
-                context = await get_caller_context(phone_number)
-                return JSONResponse(content={
-                    "result": context
-                })
-            
-            # Handle other functions here as needed
-            return JSONResponse(content={"result": "Function not implemented"})
+elif message_type == "function-call":
+    print("🔍 Function call received")
+    
+    # Extract function details
+    function_call = payload.get("message", {}).get("functionCall", {})
+    function_name = function_call.get("name")
+    parameters = function_call.get("parameters", {})
+    
+    # Get phone number from call data
+    phone_number = payload.get("message", {}).get("call", {}).get("customer", {}).get("number")
+    
+    print(f"   Function: {function_name}")
+    print(f"   Phone: {phone_number}")
+    print(f"   Parameters: {parameters}")
+    
+    # Handle memory retrieval function
+    if function_name == "get_caller_history":
+        context = await get_caller_context(phone_number)
+        # Add caller ID to the response
+        context["caller_phone"] = phone_number
+        return JSONResponse(content={
+            "result": context
+        })
+    
+    # Handle other functions here as needed
+    return JSONResponse(content={"result": "Function not implemented"})
+```
+
+### Step 2: Create the Function in Vapi
+
+Go to **Vapi Dashboard → Tools → Add Function:**
+
+**Function Configuration:**
+- **Name:** `get_caller_history`
+- **Description:** 
+```
+Retrieves the caller's previous conversation history, contact information, and preferences from past calls. This function provides personalized context to make the conversation more helpful. Always call this at the very beginning of every call before greeting the customer.
+```
+- **Server URL:** `https://mfcagent-production.up.railway.app`
+- **Parameters:** (leave empty - phone number comes from call data)
+
+### Step 3: Update System Prompt in Vapi
+
+Add this to the **TOP** of your assistant's system prompt:
+```
+CRITICAL INSTRUCTIONS - FOLLOW THESE FIRST:
+
+1. MEMORY RETRIEVAL: At the start of EVERY call, IMMEDIATELY call the get_caller_history function before greeting the caller. Use the returned information to personalize the conversation.
+
+2. CALLER IDENTIFICATION: You have access to the caller's phone number from caller ID. When a customer asks if you know their phone number, or when taking a message, confirm: "Yes, I have you calling from [phone number]. Is that the best number to reach you?"
+
+3. MESSAGE TAKING PROTOCOL: When taking a message, you MUST collect ALL of the following:
+   - Customer's full name
+   - Phone number (confirm the caller ID or get an alternate number)
+   - Email address
+   - Detailed message/nature of inquiry
+   - Best time to call back (optional)
+
+Do NOT end a message-taking conversation until you have at least: name, phone number, and the message content.
+
+Example message-taking flow:
+"I'd be happy to pass that message along. I have you calling from [caller ID number] - is that the best number for Brady to reach you? And may I also get your email address?"
+
+[Rest of your existing prompt continues here...]
+```
+
+---
+
+## Test Scenario After Fix
+
+**Next call should go like this:**
+```
+Agent: "Welcome back, Guy! I see from our records you're calling from 406-240-2889. 
+        Last time we discussed [previous topic from Zep]. How can I help you today?"
+
+You: "I need to get a message to Brady in Lewistown."
+
+Agent: "I'd be happy to pass that along to Brady. I have your contact information 
+       on file - 406-240-2889. Is that still the best number? And may I also 
+       confirm your email address?"
+ 
         
         # Handle end-of-call-report for saving conversation
         elif message_type == "end-of-call-report":
