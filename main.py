@@ -60,60 +60,55 @@ async def handle_vapi_webhook(request: Request):
             return JSONResponse(content={"status": "acknowledged"})
         
         # Handle tool-calls - this is how Vapi requests memory and executes tools
-    # Handle tool-calls - this is how Vapi requests memory and executes tools
-elif message_type in ["tool-calls", "function-call"]:
-    print("🔍 Tool call received")
-    
-    message_data = payload.get("message", {})
-    
-    # The function data is in toolCallList or toolCalls
-    tool_call_list = message_data.get("toolCallList", [])
-    if not tool_call_list:
-        tool_call_list = message_data.get("toolCalls", [])
-    
-    print(f"   📦 Tool call list: {json.dumps(tool_call_list, indent=2)}")
-    
-    # Get the first tool call (should only be one for get_caller_history)
-    if tool_call_list and len(tool_call_list) > 0:
-        tool_call = tool_call_list[0]
-        
-        # Extract function details from the tool call
-        function_name = tool_call.get("function", {}).get("name")
-        if not function_name:
-            function_name = tool_call.get("name")
-        
-        parameters = tool_call.get("function", {}).get("arguments", {})
-        if not parameters:
-            parameters = tool_call.get("parameters", {})
-        
-        # Get phone number from call data
-        phone_number = message_data.get("call", {}).get("customer", {}).get("number")
-        
-        print(f"   Function: {function_name}")
-        print(f"   Phone: {phone_number}")
-        print(f"   Parameters: {parameters}")
-        
-        # Handle memory retrieval function
-        if function_name == "get_caller_history":
-            print(f"   🧠 Retrieving memory for: {phone_number}")
-            context = await get_caller_context(phone_number)
-            # Add caller ID to the response
-            context["caller_phone"] = phone_number
-            print(f"   ✓ Memory retrieved: is_returning_caller={context.get('is_returning_caller')}")
-            return JSONResponse(content={
-                "result": context
-            })
-        
-        # Handle other functions here as needed
-        print(f"   ⚠️ Function not implemented: {function_name}")
-        return JSONResponse(content={"result": "Function not implemented"})
-    else:
-        print(f"   ⚠️ No tool calls found in list")
-        return JSONResponse(content={"result": "No tool calls found"})
+        elif message_type in ["tool-calls", "function-call"]:
+            print("🔍 Tool call received")
             
-            # Handle other functions here as needed
-            print(f"   ⚠️ Function not implemented: {function_name}")
-            return JSONResponse(content={"result": "Function not implemented"})
+            message_data = payload.get("message", {})
+            
+            # The function data is in toolCallList or toolCalls
+            tool_call_list = message_data.get("toolCallList", [])
+            if not tool_call_list:
+                tool_call_list = message_data.get("toolCalls", [])
+            
+            print(f"   📦 Tool call list: {json.dumps(tool_call_list, indent=2)}")
+            
+            # Get the first tool call (should only be one for get_caller_history)
+            if tool_call_list and len(tool_call_list) > 0:
+                tool_call = tool_call_list[0]
+                
+                # Extract function details from the tool call
+                function_name = tool_call.get("function", {}).get("name")
+                if not function_name:
+                    function_name = tool_call.get("name")
+                
+                parameters = tool_call.get("function", {}).get("arguments", {})
+                if not parameters:
+                    parameters = tool_call.get("parameters", {})
+                
+                # Get phone number from call data
+                phone_number = message_data.get("call", {}).get("customer", {}).get("number")
+                
+                print(f"   Function: {function_name}")
+                print(f"   Phone: {phone_number}")
+                print(f"   Parameters: {parameters}")
+                
+                # Handle memory retrieval function
+                if function_name == "get_caller_history":
+                    print(f"   🧠 Retrieving memory for: {phone_number}")
+                    context = await get_caller_context(phone_number)
+                    # Add caller ID to the response
+                    context["caller_phone"] = phone_number
+                    print(f"   ✓ Memory retrieved: is_returning_caller={context.get('is_returning_caller')}")
+                    return JSONResponse(content={
+                        "result": context
+                    })
+                
+                # Handle other functions here as needed
+                print(f"   ⚠️ Function not implemented: {function_name}")
+                return JSONResponse(content={"result": "Function not implemented"})
+            else:
+                print(f"   ⚠️ No tool calls found in list")
+                return JSONResponse(content={"result": "No tool calls found"})
         
         # Handle end-of-call-report for saving conversation
         elif message_type == "end-of-call-report":
