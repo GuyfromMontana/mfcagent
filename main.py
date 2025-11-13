@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import os
+import json
 from zep_cloud.client import Zep
 from zep_cloud import Message
 import logging
@@ -62,13 +63,24 @@ async def handle_vapi_webhook(request: Request):
         elif message_type in ["tool-calls", "function-call"]:
             print("🔍 Tool call received")
             
-            # Extract function details
-            function_call = payload.get("message", {}).get("functionCall", {})
+            # DEBUG: Print entire message payload to see structure
+            message_data = payload.get("message", {})
+            print(f"   📦 Full message keys: {list(message_data.keys())}")
+            
+            # Try different possible locations for function call data
+            function_call = message_data.get("functionCall", {})
+            if not function_call:
+                function_call = message_data.get("toolCall", {})
+            if not function_call:
+                function_call = message_data.get("tool_call", {})
+            
+            print(f"   📦 Function call data: {json.dumps(function_call, indent=2)}")
+            
             function_name = function_call.get("name")
             parameters = function_call.get("parameters", {})
             
             # Get phone number from call data
-            phone_number = payload.get("message", {}).get("call", {}).get("customer", {}).get("number")
+            phone_number = message_data.get("call", {}).get("customer", {}).get("number")
             
             print(f"   Function: {function_name}")
             print(f"   Phone: {phone_number}")
