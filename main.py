@@ -191,25 +191,33 @@ async def get_caller_context(phone_number: str) -> dict:
                 "summary": "First time caller - no previous conversation history."
             }
         
-        # Get the user's conversation threads
-        threads = zep.thread.list_by_user_id(user_id=phone_number)
-        
-        if not threads or len(threads) == 0:
-            print(f"   ℹ No threads found for: {phone_number}")
+        # Get the user's sessions (threads) - CORRECTED METHOD
+        try:
+            sessions = zep.user.get_sessions(user_id=phone_number)
+            print(f"   ✓ Found {len(sessions) if sessions else 0} sessions for user")
+        except Exception as e:
+            print(f"   ℹ No sessions found: {e}")
             return {
                 "is_returning_caller": False,
                 "summary": "No previous conversations found."
             }
         
-        # Get the most recent thread
-        most_recent_thread = threads[0]  # Threads are returned newest first
-        thread_id = most_recent_thread.uuid
+        if not sessions or len(sessions) == 0:
+            print(f"   ℹ No sessions for user")
+            return {
+                "is_returning_caller": False,
+                "summary": "No previous conversations found."
+            }
         
-        print(f"   ✓ Found thread: {thread_id}")
+        # Get the most recent session
+        most_recent_session = sessions[0]  # Sessions are returned newest first
+        session_id = most_recent_session.session_id
         
-        # Get memory/summary for this thread
+        print(f"   ✓ Found session: {session_id}")
+        
+        # Get memory/summary for this session
         try:
-            memory = zep.memory.get(session_id=thread_id)
+            memory = zep.memory.get(session_id=session_id)
             
             # Extract the relevant context
             context_parts = []
@@ -227,25 +235,25 @@ async def get_caller_context(phone_number: str) -> dict:
                 summary = " | ".join(context_parts)
             else:
                 # Fallback: get last few messages manually
-                messages = zep.message.list(session_id=thread_id, limit=10)
+                messages = zep.message.list(session_id=session_id, limit=10)
                 recent_messages = []
                 for msg in messages[:5]:  # Last 5 messages
                     role = "Customer" if msg.role == "user" else "Agent"
                     recent_messages.append(f"{role}: {msg.content[:100]}")
                 summary = "Recent exchange: " + " | ".join(recent_messages)
             
-            print(f"   ✓ Retrieved memory summary (optimized for low latency)")
+            print(f"   ✓ Retrieved memory summary")
             return {
                 "is_returning_caller": True,
                 "summary": summary,
-                "last_conversation": str(most_recent_thread.created_at)
+                "last_conversation": str(most_recent_session.created_at) if hasattr(most_recent_session, 'created_at') else "recent"
             }
             
         except Exception as e:
             print(f"   ⚠️ Error getting memory: {e}")
             # Fallback to basic message retrieval
             try:
-                messages = zep.message.list(session_id=thread_id, limit=5)
+                messages = zep.message.list(session_id=session_id, limit=5)
                 if messages and len(messages) > 0:
                     summary = f"Returning caller. Last spoke about: {messages[0].content[:200]}"
                 else:
@@ -282,9 +290,9 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
         # Use phone number as user_id
         user_id = phone_number
         
-        # Create thread_id combining phone and call_id for uniqueness
-        thread_id = f"mfc_{phone_number}_{call_id}"
-        print(f"   Thread: {thread_id}")
+        # Create session_id combining phone and call_id for uniqueness
+        session_id = f"mfc_{phone_number}_{call_id}"
+        print(f"   Session: {session_id}")
         
         # Ensure user exists in Zep
         try:
@@ -338,31 +346,17 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
             print("   ⚠️ No messages to save")
             return
         
-        print(f"   Thread: {thread_id}")
+        print(f"   Session: {session_id}")
         print(f"   Messages: {len(zep_messages)}")
         
-        # Create thread if it doesn't exist, then add messages
+        # Add messages to the session
         try:
-            # Try to get the thread first to see if it exists
-            try:
-                existing_thread = zep.thread.get(thread_id=thread_id)
-                print(f"   ✓ Thread exists: {thread_id}")
-            except Exception as e:
-                # Thread doesn't exist, create it using the CORRECT method
-                print(f"   Creating new thread: {thread_id}")
-                zep.thread.create(
-                    thread_id=thread_id,
-                    user_id=user_id
-                )
-                print(f"   ✓ Thread created successfully")
-            
-            # Now add messages to the thread
-            zep.thread.add_messages(
-                thread_id=thread_id,
+            zep.memory.add(
+                session_id=session_id,
                 messages=zep_messages
             )
             
-            print(f"   ✓ Conversation saved successfully to thread: {thread_id}")
+            print(f"   ✓ Conversation saved successfully to session: {session_id}")
             print(f"   Messages saved: {len(zep_messages)}")
             
         except Exception as e:
