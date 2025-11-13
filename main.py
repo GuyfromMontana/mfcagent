@@ -58,9 +58,9 @@ async def handle_vapi_webhook(request: Request):
                 print(f"📞 Call started for: {phone_number}")
             return JSONResponse(content={"status": "acknowledged"})
         
-        # Handle function-call - this is how Vapi requests memory and executes tools
-        elif message_type == "function-call":
-            print("🔍 Function call received")
+        # Handle tool-calls - this is how Vapi requests memory and executes tools
+        elif message_type in ["tool-calls", "function-call"]:
+            print("🔍 Tool call received")
             
             # Extract function details
             function_call = payload.get("message", {}).get("functionCall", {})
@@ -76,14 +76,17 @@ async def handle_vapi_webhook(request: Request):
             
             # Handle memory retrieval function
             if function_name == "get_caller_history":
+                print(f"   🧠 Retrieving memory for: {phone_number}")
                 context = await get_caller_context(phone_number)
                 # Add caller ID to the response
                 context["caller_phone"] = phone_number
+                print(f"   ✓ Memory retrieved: is_returning_caller={context.get('is_returning_caller')}")
                 return JSONResponse(content={
                     "result": context
                 })
             
             # Handle other functions here as needed
+            print(f"   ⚠️ Function not implemented: {function_name}")
             return JSONResponse(content={"result": "Function not implemented"})
         
         # Handle end-of-call-report for saving conversation
@@ -158,10 +161,10 @@ async def get_caller_context(phone_number: str) -> dict:
         # Check if this caller exists in Zep
         try:
             user = zep.user.get(user_id=phone_number)
-            print(f"✓ Found existing user: {phone_number}")
+            print(f"   ✓ Found existing user: {phone_number}")
         except Exception as e:
             # New caller - no history
-            print(f"ℹ New caller (no history): {phone_number}")
+            print(f"   ℹ New caller (no history): {phone_number}")
             return {
                 "is_returning_caller": False,
                 "summary": "First time caller - no previous conversation history."
@@ -171,7 +174,7 @@ async def get_caller_context(phone_number: str) -> dict:
         threads = zep.thread.list_by_user_id(user_id=phone_number)
         
         if not threads or len(threads) == 0:
-            print(f"ℹ No threads found for: {phone_number}")
+            print(f"   ℹ No threads found for: {phone_number}")
             return {
                 "is_returning_caller": False,
                 "summary": "No previous conversations found."
@@ -181,7 +184,7 @@ async def get_caller_context(phone_number: str) -> dict:
         most_recent_thread = threads[0]  # Threads are returned newest first
         thread_id = most_recent_thread.uuid
         
-        print(f"✓ Found thread: {thread_id}")
+        print(f"   ✓ Found thread: {thread_id}")
         
         # Get memory/summary for this thread
         try:
@@ -210,7 +213,7 @@ async def get_caller_context(phone_number: str) -> dict:
                     recent_messages.append(f"{role}: {msg.content[:100]}")
                 summary = "Recent exchange: " + " | ".join(recent_messages)
             
-            print(f"✓ Retrieved memory summary (optimized for low latency)")
+            print(f"   ✓ Retrieved memory summary (optimized for low latency)")
             return {
                 "is_returning_caller": True,
                 "summary": summary,
@@ -218,21 +221,30 @@ async def get_caller_context(phone_number: str) -> dict:
             }
             
         except Exception as e:
-            print(f"⚠️ Error getting memory: {e}")
+            print(f"   ⚠️ Error getting memory: {e}")
             # Fallback to basic message retrieval
-            messages = zep.message.list(session_id=thread_id, limit=5)
-            if messages and len(messages) > 0:
-                summary = f"Returning caller. Last spoke about: {messages[0].content[:200]}"
-            else:
-                summary = "Returning caller with previous conversation on file."
-            
-            return {
-                "is_returning_caller": True,
-                "summary": summary
-            }
+            try:
+                messages = zep.message.list(session_id=thread_id, limit=5)
+                if messages and len(messages) > 0:
+                    summary = f"Returning caller. Last spoke about: {messages[0].content[:200]}"
+                else:
+                    summary = "Returning caller with previous conversation on file."
+                
+                return {
+                    "is_returning_caller": True,
+                    "summary": summary
+                }
+            except Exception as inner_e:
+                print(f"   ⚠️ Error getting messages: {inner_e}")
+                return {
+                    "is_returning_caller": True,
+                    "summary": "Returning caller with previous conversation on file."
+                }
             
     except Exception as e:
-        print(f"❌ Error retrieving caller context: {e}")
+        print(f"   ❌ Error retrieving caller context: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             "is_returning_caller": False,
             "summary": "Unable to retrieve caller history."
@@ -256,9 +268,9 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
         # Ensure user exists in Zep
         try:
             user = zep.user.get(user_id=user_id)
-            print(f"✓ User exists in Zep")
+            print(f"   ✓ User exists in Zep")
         except Exception as e:
-            print(f"Creating new user in Zep: {user_id}")
+            print(f"   Creating new user in Zep: {user_id}")
             zep.user.add(
                 user_id=user_id,
                 first_name=phone_number,
@@ -267,7 +279,7 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
                     "source": "mfc_voice_agent"
                 }
             )
-            print(f"✓ Created new user in Zep: {user_id}")
+            print(f"   ✓ Created new user in Zep: {user_id}")
         
         # Format messages for Zep with character limit
         MAX_MESSAGE_LENGTH = 2500  # Zep's limit
@@ -302,7 +314,7 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
             print(f"   ⚠️ Truncated {truncated_count} messages that exceeded 2500 chars")
         
         if not zep_messages:
-            print("⚠️ No messages to save")
+            print("   ⚠️ No messages to save")
             return
         
         print(f"   Thread: {thread_id}")
@@ -329,11 +341,11 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
                 messages=zep_messages
             )
             
-            print(f"✓ Conversation saved successfully to thread: {thread_id}")
+            print(f"   ✓ Conversation saved successfully to thread: {thread_id}")
             print(f"   Messages saved: {len(zep_messages)}")
             
         except Exception as e:
-            print(f"❌ Error saving conversation: {str(e)}")
+            print(f"   ❌ Error saving conversation: {str(e)}")
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Failed to save conversation: {str(e)}")
