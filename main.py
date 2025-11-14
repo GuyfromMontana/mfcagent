@@ -6,6 +6,7 @@ import json
 from zep_cloud.client import Zep
 from zep_cloud import Message
 import logging
+from supabase import create_client, Client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,12 +27,25 @@ print(f"🔑 Key starts with 'z_': {ZEP_API_KEY.startswith('z_')}")
 # Initialize Zep client
 zep = Zep(api_key=ZEP_API_KEY)
 
+# Initialize Supabase client
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables are required")
+
+print(f"🗄️ Supabase URL: {SUPABASE_URL}")
+print(f"🔑 Supabase Key loaded: {SUPABASE_SERVICE_KEY[:5]}...{SUPABASE_SERVICE_KEY[-5:]}")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
 @app.get("/")
 async def root():
     return {
         "status": "MFC Agent Memory Service Running",
         "timestamp": datetime.now().isoformat(),
-        "zep_configured": bool(ZEP_API_KEY)
+        "zep_configured": bool(ZEP_API_KEY),
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_SERVICE_KEY)
     }
 
 @app.get("/health")
@@ -102,6 +116,75 @@ async def handle_vapi_webhook(request: Request):
                     return JSONResponse(content={
                         "result": context
                     })
+                
+                # Handle town territory lookup function
+                elif function_name == "lookup_town_territory":
+                    print(f"   📍 Looking up town territory")
+                    town_name = parameters.get("town_name")
+                    state = parameters.get("state", "MT")
+                    
+                    if not town_name:
+                        print(f"   ❌ No town name provided")
+                        return JSONResponse(content={
+                            "result": {
+                                "success": False,
+                                "error": "town_name is required"
+                            }
+                        })
+                    
+                    # Normalize town name
+                    town_name = town_name.strip().title()
+                    state = state.strip().upper()
+                    
+                    print(f"   Looking up: {town_name}, {state}")
+                    
+                    try:
+                        # Query Supabase for the town
+                        response = supabase.table("town_distances") \
+                            .select("town_name, state, assigned_territory, nearest_distance") \
+                            .eq("town_name", town_name) \
+                            .eq("state", state) \
+                            .execute()
+                        
+                        if not response.data or len(response.data) == 0:
+                            print(f"   ⚠️ Town not found: {town_name}, {state}")
+                            return JSONResponse(content={
+                                "result": {
+                                    "success": False,
+                                    "error": f"Town '{town_name}, {state}' not found in database",
+                                    "town_name": town_name,
+                                    "state": state
+                                }
+                            })
+                        
+                        # Get the first result
+                        town_data = response.data[0]
+                        territory = town_data.get("assigned_territory")
+                        distance = town_data.get("nearest_distance")
+                        
+                        print(f"   ✓ Found: {town_name} → {territory} territory ({distance} miles)")
+                        
+                        return JSONResponse(content={
+                            "result": {
+                                "success": True,
+                                "town_name": town_name,
+                                "state": state,
+                                "assigned_territory": territory,
+                                "distance_to_specialist": distance,
+                                "message": f"{town_name} is served by the {territory} territory specialist"
+                            }
+                        })
+                        
+                    except Exception as e:
+                        print(f"   ❌ Error querying Supabase: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
+                        return JSONResponse(content={
+                            "result": {
+                                "success": False,
+                                "error": str(e)
+                            }
+                        })
                 
                 # Handle other functions here as needed
                 print(f"   ⚠️ Function not implemented: {function_name}")
@@ -370,6 +453,88 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
         import traceback
         traceback.print_exc()
         raise
+
+
+@app.post("/api/lookup-town-territory")
+async def lookup_town_territory_api(request: Request):
+    """
+    Standalone API endpoint for looking up town territory.
+    Can be called directly (not just through Vapi tool calls).
+    
+    Expected input:
+    {
+        "town_name": "Darby",
+        "state": "MT"
+    }
+    """
+    try:
+        payload = await request.json()
+        print(f"📍 Town lookup API request: {json.dumps(payload, indent=2)}")
+        
+        town_name = payload.get("town_name")
+        state = payload.get("state", "MT")
+        
+        if not town_name:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": "town_name is required"
+                }
+            )
+        
+        # Normalize town name
+        town_name = town_name.strip().title()
+        state = state.strip().upper()
+        
+        print(f"   Looking up: {town_name}, {state}")
+        
+        # Query Supabase
+        response = supabase.table("town_distances") \
+            .select("town_name, state, assigned_territory, nearest_distance") \
+            .eq("town_name", town_name) \
+            .eq("state", state) \
+            .execute()
+        
+        if not response.data or len(response.data) == 0:
+            print(f"   ⚠️ Town not found: {town_name}, {state}")
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": f"Town '{town_name}, {state}' not found in database",
+                    "town_name": town_name,
+                    "state": state
+                }
+            )
+        
+        # Get the result
+        town_data = response.data[0]
+        territory = town_data.get("assigned_territory")
+        distance = town_data.get("nearest_distance")
+        
+        print(f"   ✓ Found: {town_name} → {territory} territory ({distance} miles)")
+        
+        return JSONResponse(content={
+            "success": True,
+            "town_name": town_name,
+            "state": state,
+            "assigned_territory": territory,
+            "distance_to_specialist": distance,
+            "message": f"{town_name} is served by the {territory} territory specialist"
+        })
+        
+    except Exception as e:
+        print(f"❌ Error in lookup_town_territory_api: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(e)
+            }
+        )
 
 
 if __name__ == "__main__":
