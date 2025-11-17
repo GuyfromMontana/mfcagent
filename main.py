@@ -365,7 +365,7 @@ async def get_caller_context(phone_number: str) -> dict:
 
 async def save_conversation(phone_number: str, call_id: str, transcript: str, messages: list):
     """
-    Save conversation to Zep memory
+    Save conversation to Zep memory using thread methods
     """
     try:
         print(f"\n💾 Saving conversation for: {phone_number}")
@@ -373,9 +373,9 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
         # Use phone number as user_id
         user_id = phone_number
         
-        # Create session_id combining phone and call_id for uniqueness
-        session_id = f"mfc_{phone_number}_{call_id}"
-        print(f"   Session: {session_id}")
+        # Create thread_id combining phone and call_id for uniqueness
+        thread_id = f"mfc_{phone_number}_{call_id}"
+        print(f"   Thread: {thread_id}")
         
         # Ensure user exists in Zep
         try:
@@ -414,36 +414,51 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
                     content = content[:MAX_MESSAGE_LENGTH - 50] + "... [truncated]"
                     truncated_count += 1
                 
-                zep_messages.append(
-                    Message(
-                        role=zep_role,
-                        content=content
-                    )
-                )
+                zep_messages.append({
+                    "role": zep_role,
+                    "content": content
+                })
         
         print(f"   Formatted messages: {len(zep_messages)}")
         if truncated_count > 0:
-            print(f"   ⚠️ Truncated {truncated_count} messages that exceeded 2500 chars")
+            print(f"   ⚠️ Truncated {truncated_count} messages that exceeded {MAX_MESSAGE_LENGTH} chars")
         
         if not zep_messages:
             print("   ⚠️ No messages to save")
             return
         
-        print(f"   Session: {session_id}")
+        print(f"   Thread: {thread_id}")
         print(f"   Messages: {len(zep_messages)}")
         
-        # Add messages to the session
+        # Create or get thread
         try:
-            zep.memory.add(
-                session_id=session_id,
+            thread = zep.thread.get(thread_id=thread_id)
+            print(f"   ✓ Thread already exists")
+        except Exception:
+            print(f"   Creating new thread: {thread_id}")
+            zep.thread.create(
+                thread_id=thread_id,
+                user_id=user_id,
+                metadata={
+                    "call_id": call_id,
+                    "source": "mfc_voice_agent",
+                    "phone": phone_number
+                }
+            )
+            print(f"   ✓ Created thread: {thread_id}")
+        
+        # Add messages to thread
+        try:
+            zep.thread.add_messages(
+                thread_id=thread_id,
                 messages=zep_messages
             )
             
-            print(f"   ✓ Conversation saved successfully to session: {session_id}")
-            print(f"   Messages saved: {len(zep_messages)}")
+            print(f"   ✓ Conversation saved successfully to thread: {thread_id}")
+            print(f"   ✓ Messages saved: {len(zep_messages)}")
             
         except Exception as e:
-            print(f"   ❌ Error saving conversation: {str(e)}")
+            print(f"   ❌ Error saving messages: {str(e)}")
             import traceback
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Failed to save conversation: {str(e)}")
