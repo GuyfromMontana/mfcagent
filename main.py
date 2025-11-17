@@ -438,12 +438,7 @@ async def save_conversation(phone_number: str, call_id: str, transcript: str, me
             print(f"   Creating new thread: {thread_id}")
             zep.thread.create(
                 thread_id=thread_id,
-                user_id=user_id,
-                metadata={
-                    "call_id": call_id,
-                    "source": "mfc_voice_agent",
-                    "phone": phone_number
-                }
+                user_id=user_id
             )
             print(f"   ✓ Created thread: {thread_id}")
         
